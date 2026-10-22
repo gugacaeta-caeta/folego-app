@@ -7,8 +7,8 @@ android {
         applicationId "app.folego.turma"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode (System.getenv("VERSION_CODE") ?: "1").toInteger()
-        versionName "1.0." + (System.getenv("VERSION_CODE") ?: "1")
+        versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "1")
+        versionName("1.0." + (System.getenv("VERSION_CODE") ?: "1"))
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,21 +16,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // A chave fica no repositório, mas só abre com a senha guardada no secret KEYSTORE_PASSWORD do GitHub.
+    def ksFile = file("folego-release.keystore")
+    def ksPass = System.getenv("KEYSTORE_PASSWORD")
+    def hasKey = ksFile.exists() && ksPass
     signingConfigs {
-        release {
-            // A chave fica no repositório, mas só abre com a senha guardada no secret KEYSTORE_PASSWORD do GitHub.
-            def ks = file("folego-release.keystore")
-            if (ks.exists() && System.getenv("KEYSTORE_PASSWORD")) {
-                storeFile ks
-                storePassword System.getenv("KEYSTORE_PASSWORD")
+        if (hasKey) {
+            release {
+                storeFile ksFile
+                storePassword ksPass
                 keyAlias "folego"
-                keyPassword System.getenv("KEYSTORE_PASSWORD")
+                keyPassword ksPass
             }
         }
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release.storeFile ? signingConfigs.release : signingConfigs.debug
+            signingConfig hasKey ? signingConfigs.getByName("release") : signingConfigs.getByName("debug")
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
