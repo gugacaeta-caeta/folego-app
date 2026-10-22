@@ -27,9 +27,6 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - name: Preparar Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Instalar dependências
         run: npm ci
 
@@ -45,9 +42,10 @@ jobs:
         env:
           VERSION_CODE: ${{ github.run_number }}
         run: |
+          echo "ANDROID_HOME=$ANDROID_HOME  ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" | tee ../build.log
           chmod +x gradlew
           set -o pipefail
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee ../build.log
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee -a ../build.log
           cp app/build/outputs/apk/release/app-release.apk ../Folego.apk
 
       - name: Guardar log do erro no ramo build-logs
