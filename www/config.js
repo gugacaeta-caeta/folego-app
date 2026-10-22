@@ -6,5 +6,5 @@ window.FOLEGO_CONFIG = {
   supabaseUrl: "",        // ex.: "https://abcdxyz.supabase.co"
   supabaseAnonKey: "",    // ex.: "eyJhbGciOi..." (chave anon public)
   defaultGroup: "galera", // código da turma sugerido no primeiro acesso
-  downloadUrl: "",        // link para baixar o APK (o GitHub mostra depois da 1ª compilação)
+  downloadUrl: "https://github.com/Gugacaeta-caeta/folego-app/releases/latest/download/Folego.apk",
 };

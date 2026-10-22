@@ -18,7 +18,7 @@ O GitHub compila o app de graça na nuvem toda vez que o código muda. Cada comp
    A chave de assinatura (`android/app/folego-release.keystore`) já está no projeto, mas só funciona com essa senha. Ela garante que as próximas versões instalem por cima da anterior sem perder os treinos. **Não perca a senha.**
 3. Abra **Actions → Gerar APK do Fôlego → Run workflow**. Leva uns 6 minutos.
 4. Em **Releases**, copie o link do `Folego.apk`. O link fixo da versão mais nova é:
-   `https://github.com/SEU-USUARIO/folego-app/releases/latest/download/Folego.apk`
+   `https://github.com/Gugacaeta-caeta/folego-app/releases/latest/download/Folego.apk`
 5. Cole esse link em `www/config.js`, no campo `downloadUrl`, para o botão "Convidar" do app mandar o link certo.
 
 ## Instalar no celular
