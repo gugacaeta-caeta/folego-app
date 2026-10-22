@@ -1,0 +1,62 @@
+name: Gerar APK do Fôlego
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Copiar o app para o projeto Android
+        run: npx cap sync android
+
+      - name: Avisar se falta a senha da chave
+        if: env.KEYSTORE_PASSWORD == ''
+        run: echo "::warning::Secret KEYSTORE_PASSWORD não configurado. O APK sai com assinatura temporária e as próximas versões não vão instalar por cima."
+
+      - name: Compilar APK
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk ../Folego.apk
+
+      - name: Guardar APK nesta execução
+        uses: actions/upload-artifact@v4
+        with:
+          name: Folego-apk
+          path: Folego.apk
+
+      - name: Publicar versão para download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Fôlego 1.0.${{ github.run_number }}
+          body: "Baixe o arquivo **Folego.apk** abaixo no celular Android e toque para instalar."
+          files: Folego.apk
+          make_latest: true

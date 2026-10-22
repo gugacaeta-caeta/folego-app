@@ -1,0 +1,9 @@
+{
+  "appId": "app.folego.turma",
+  "appName": "Fôlego",
+  "webDir": "www",
+  "android": {
+    "useLegacyBridge": true,
+    "backgroundColor": "#F1F0EA"
+  }
+}

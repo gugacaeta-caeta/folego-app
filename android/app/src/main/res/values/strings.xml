@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Fôlego</string>
+    <string name="title_activity_main">Fôlego</string>
+    <string name="package_name">app.folego.turma</string>
+    <string name="custom_url_scheme">app.folego.turma</string>
+    <string name="capacitor_background_geolocation_notification_channel_name">Treino em andamento</string>
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_stat_folego</string>
+</resources>

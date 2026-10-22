@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#BF4429">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fôlego">
+<meta name="description" content="Corrida, caminhada e bike com GPS, mapa 3D, desafios diários e ranking com os amigos.">
+<title>Fôlego</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700;800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">F<span>ô</span>lego</div>
+    <button class="me-btn" id="me-btn" aria-label="Seu perfil"><span id="me-nick">Atleta</span><i id="me-av" class="av sm">A</i></button>
+  </header>
+  <div id="resume-slot"></div>
+  <main>
+    <section id="s-hoje" class="screen"></section>
+    <section id="s-turma" class="screen" hidden></section>
+    <section id="s-rank" class="screen" hidden></section>
+    <section id="s-eu" class="screen" hidden></section>
+  </main>
+</div>
+
+<nav class="tabs" aria-label="Seções">
+  <div class="tabs-in">
+    <button data-tab="hoje" aria-current="page"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Hoje</button>
+    <button data-tab="turma"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><circle cx="17" cy="10" r="2.6"/><path d="M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6M15 15.2c2.6-.4 4.8.9 5.6 3.8"/></svg>Turma</button>
+    <button data-tab="gravar" class="rec-tab" aria-label="Gravar treino"><span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" class="fill"/></svg></span>Gravar</button>
+    <button data-tab="rank"><svg viewBox="0 0 24 24"><path d="M5 20V12M12 20V5M19 20v-5"/></svg>Ranking</button>
+    <button data-tab="eu"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Treinos</button>
+  </div>
+</nav>
+
+<!-- Gravação com GPS -->
+<section id="rec" class="full" hidden>
+  <div id="rec-map" class="map"></div>
+  <button class="map-btn close" id="rec-close" aria-label="Voltar">×</button>
+  <div class="map-tools">
+    <button class="map-btn" id="rec-center" aria-label="Centralizar"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+    <button class="map-btn" id="rec-3d" aria-label="Alternar 2D e 3D">3D</button>
+  </div>
+  <div class="gps" id="gps"><i></i><span>Procurando sinal de GPS…</span></div>
+  <div class="rec-panel">
+    <div class="types" id="rec-types" role="group" aria-label="Modalidade">
+      <button data-t="run" aria-pressed="true">Corrida</button>
+      <button data-t="walk" aria-pressed="false">Caminhada</button>
+      <button data-t="bike" aria-pressed="false">Bike</button>
+    </div>
+    <div class="big-stats">
+      <div class="bs main"><b id="r-dist">0,00</b><span>km</span></div>
+      <div class="bs"><b id="r-time">00:00</b><span>tempo</span></div>
+      <div class="bs"><b id="r-pace">–</b><span id="r-pace-l">ritmo /km</span></div>
+      <div class="bs"><b id="r-elev">0</b><span>m subida</span></div>
+    </div>
+    <div class="rec-ctrl" id="rec-ctrl"></div>
+    <p class="hint" id="rec-hint">Deixe a tela ligada durante o treino. Com a tela apagada, o celular pode parar de mandar o GPS para o navegador.</p>
+  </div>
+</section>
+
+<!-- Detalhe do treino -->
+<section id="detail" class="full scroll" hidden>
+  <div class="detail-map-wrap">
+    <div id="detail-map" class="map"></div>
+    <button class="map-btn close" id="d-close" aria-label="Voltar">×</button>
+    <div class="map-tools">
+      <button class="map-btn wide" id="d-fly">Voo 3D</button>
+    </div>
+  </div>
+  <div class="detail-body" id="detail-body"></div>
+</section>
+
+<!-- Folhas e avisos -->
+<div class="sheet-bg" id="sheet-bg" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
