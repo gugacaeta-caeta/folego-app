@@ -11,11 +11,7 @@ O GitHub compila o app de graça na nuvem toda vez que o código muda. Cada comp
 ### Configuração (uma vez só)
 
 1. Crie um repositório **público** no GitHub (ex.: `folego-app`) e envie esta pasta. Ele precisa ser público para seus amigos conseguirem baixar o APK sem login.
-2. No repositório, abra **Settings → Secrets and variables → Actions → New repository secret**:
-   - Nome: `KEYSTORE_PASSWORD`
-   - Valor: a senha da chave que o Claude te passou na conversa
-   
-   A chave de assinatura (`android/app/folego-release.keystore`) já está no projeto, mas só funciona com essa senha. Ela garante que as próximas versões instalem por cima da anterior sem perder os treinos. **Não perca a senha.**
+2. A assinatura do app já vem configurada no projeto (`android/app/folego-release.keystore`). Ela garante que as próximas versões instalem por cima da anterior sem perder os treinos.
 3. Abra **Actions → Gerar APK do Fôlego → Run workflow**. Leva uns 6 minutos.
 4. Em **Releases**, copie o link do `Folego.apk`. O link fixo da versão mais nova é:
    `https://github.com/Gugacaeta-caeta/folego-app/releases/latest/download/Folego.apk`

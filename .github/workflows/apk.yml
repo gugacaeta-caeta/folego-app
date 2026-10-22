@@ -33,10 +33,6 @@ jobs:
       - name: Copiar o app para o projeto Android
         run: npx cap sync android
 
-      - name: Avisar se falta a senha da chave
-        if: env.KEYSTORE_PASSWORD == ''
-        run: echo "::warning::Secret KEYSTORE_PASSWORD não configurado. O APK sai com assinatura temporária e as próximas versões não vão instalar por cima."
-
       - name: Compilar APK
         working-directory: android
         env:

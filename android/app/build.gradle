@@ -16,9 +16,9 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    // A chave fica no repositório, mas só abre com a senha guardada no secret KEYSTORE_PASSWORD do GitHub.
+    // Chave de assinatura fixa do Fôlego: garante que cada versão nova instale por cima da anterior.
     def ksFile = file("folego-release.keystore")
-    def ksPass = System.getenv("KEYSTORE_PASSWORD")
+    def ksPass = System.getenv("KEYSTORE_PASSWORD") ?: "sOMFrfcowuRoVpL2ibDAQ469"
     def hasKey = ksFile.exists() && ksPass
     signingConfigs {
         if (hasKey) {
