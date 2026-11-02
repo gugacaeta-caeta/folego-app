@@ -36,6 +36,10 @@ Esses celulares economizam bateria fechando apps em segundo plano. Para o treino
 - **Calorias:** com sensor e idade preenchida, o cálculo usa a frequência cardíaca. Sem sensor, usa peso, distância e velocidade.
 - **Diagnóstico:** ao salvar o treino, toque em **Ouvir diagnóstico**. Ele compara com seus treinos anteriores, analisa as parciais, o terreno, as zonas cardíacas e sugere a recuperação.
 
+## Compartilhar com foto
+
+Ao salvar um treino, o app oferece montar uma imagem para postar: tire uma foto do lugar, uma selfie, escolha da galeria, use o mapa 3D ou só o fundo de pista. São três modelos (Clássico, Número de peito, Mínimo) em formato Story 9:16 ou Post 4:5, com distância, tempo, ritmo, frequência ou calorias e a rota. O botão **Compartilhar imagem** abre o WhatsApp, Instagram, Facebook e outros apps do celular. Também dá para fazer depois, pelo botão **Compartilhar com foto** em qualquer treino.
+
 Se você já tinha ligado a turma no Supabase, rode o `supabase.sql` de novo para criar as colunas de frequência e calorias.
 
 ## Ligar a turma (opcional)

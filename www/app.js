@@ -2,6 +2,7 @@
 import * as maplibregl from "./vendor/maplibre/maplibre-gl.mjs";
 import { Capacitor, registerPlugin } from "./vendor/capacitor/core.mjs";
 import * as Coach from "./coach.js";
+import * as ShareCard from "./share.js";
 
 // Recursos nativos do Android (no navegador comum o app cai para as APIs da web)
 const NATIVE = Capacitor.isNativePlatform();
@@ -11,6 +12,7 @@ const Haptics = registerPlugin("Haptics");
 const ShareP = registerPlugin("Share");
 const FS = registerPlugin("Filesystem");
 const AppP = registerPlugin("App");
+const Camera = registerPlugin("Camera");
 
 const CFG = window.FOLEGO_CONFIG || {};
 const MAP_STYLE = CFG.mapStyle || "https://tiles.openfreemap.org/styles/liberty";
@@ -599,7 +601,8 @@ async function finishRec() {
   const ok = progressOf(myActs(), a.day).ok && !before && a.day === today();
   toast(ok ? `Desafio do dia concluído! +${BONUS} pts` : `Treino salvo · ${pts(a)} pts`);
   S.tab = "hoje"; setTab("hoje");
-  openDetail(a.id);
+  await openDetail(a.id);
+  openShare(a, true);
   if (groupEnabled()) uploadAct(a).then((r) => { if (!r) toast("Salvo no celular. Vai para a turma quando a internet voltar."); else loadGroup().then(render); });
 }
 
@@ -647,7 +650,7 @@ async function openDetail(id) {
       ${splits.map((s, i) => `<tr><td>${i + 1}</td><td class="${s === best && splits.length > 1 ? "best" : ""}">${a.type === "bike" ? speedStr(s, 1000) : paceStr(s, 1000)}</td><td><span class="bar" style="width:${Math.round(35 + 65 * (1 - (s - best) / Math.max(1, worst - best)))}%"></span></td></tr>`).join("")}
     </tbody></table></div>` : ""}
     <div class="row-btns" style="margin-top:20px">
-      <button class="btn2" data-do="share">Compartilhar</button>
+      <button class="btn2" data-do="share">Compartilhar com foto</button>
       ${coords.length > 1 ? '<button class="btn2" data-do="gpx">Baixar GPX</button>' : ""}
       ${own ? '<button class="btn2" data-do="del-ask" id="del-btn">Excluir</button>' : ""}
     </div>`;
@@ -769,19 +772,124 @@ async function downloadGpx(a) {
   link.href = url; link.download = `folego-${a.type}-${a.day}.gpx`; document.body.appendChild(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
-async function shareAct(a) {
+function shareTextOf(a) {
   const verb = { run: "Corri", walk: "Caminhei", bike: "Pedalei" }[a.type];
-  const text = `${verb} ${fmtKm(a.distance_m)} km em ${fmtTime(a.duration_s)} (${perf(a)}) no Fôlego.` + (S.group ? " Entre na turma:" : "");
   const url = NATIVE ? CFG.downloadUrl || "" : S.group ? inviteLink() : location.origin + location.pathname;
-  if (NATIVE) {
-    const full = text.replace(" Entre na turma:", "") + (S.group ? ` Turma: ${S.group}.` : "") + (url ? " Baixe o app: " + url : "");
-    try { await ShareP.share({ title: "Fôlego", text: full, dialogTitle: "Compartilhar treino" }); } catch {}
-    return;
-  }
+  return `${verb} ${fmtKm(a.distance_m)} km em ${fmtTime(a.duration_s)} (${perf(a)}) no Fôlego.` + (S.group ? ` Turma: ${S.group}.` : "") + (url ? ` Baixe o app: ${url}` : "");
+}
+async function shareTextOnly(a) {
+  const text = shareTextOf(a);
+  if (NATIVE) { try { await ShareP.share({ title: "Fôlego", text, dialogTitle: "Compartilhar treino" }); } catch {} return; }
+  try { if (navigator.share) { await navigator.share({ title: "Fôlego", text }); return; } } catch (e) { if (e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(text); toast("Texto copiado. Cole no WhatsApp."); } catch { toast(text, 6000); }
+}
+
+/* ============ compartilhar com foto ============ */
+const SH = { act: null, img: null, src: "none", fmt: "story", tpl: "classico", route: true };
+async function openShare(a, afterSave = false) {
+  Object.assign(SH, { act: a, img: null, src: "none" });
+  const hasTrack = (a.track || []).length > 1;
+  const chip = (attr, v, cur, label) => `<button type="button" class="opt" data-${attr}="${v}" aria-pressed="${cur === v}">${label}</button>`;
+  openSheet(`<h3>${afterSave ? "Treino salvo! Bora mostrar?" : "Compartilhar treino"}</h3>
+    ${afterSave ? '<p class="lead">Tire uma foto do lugar ou uma selfie e mande o treino para o WhatsApp, Instagram ou onde quiser.</p>' : ""}
+    <div class="sh-prev"><canvas id="sh-canvas" aria-label="Prévia da imagem do treino"></canvas></div>
+    <div class="lbl">Foto</div>
+    <div class="opts" id="sh-src">
+      ${chip("src", "camera", SH.src, "Tirar foto")}${chip("src", "selfie", SH.src, "Selfie")}${chip("src", "gallery", SH.src, "Galeria")}
+      ${hasTrack && dMap && current && current.id === a.id ? chip("src", "map", SH.src, "Mapa 3D") : ""}${chip("src", "none", SH.src, "Sem foto")}
+    </div>
+    <div class="lbl">Formato</div>
+    <div class="opts">${Object.entries(ShareCard.FORMATS).map(([k, f]) => chip("fmt", k, SH.fmt, f.label)).join("")}</div>
+    <div class="lbl">Modelo</div>
+    <div class="opts">${Object.entries(ShareCard.TEMPLATES).map(([k, l]) => chip("tpl", k, SH.tpl, l)).join("")}</div>
+    ${hasTrack ? `<label class="switch"><span>Mostrar a rota</span><input type="checkbox" id="sh-route" ${SH.route ? "checked" : ""}></label>` : ""}
+    <div class="err" id="sh-err"></div>
+    <button class="cta red" type="button" id="sh-go"><svg viewBox="0 0 24 24" width="20" height="20"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg><span>Compartilhar imagem</span></button>
+    <p class="lead small center">Abre o WhatsApp, Instagram, Facebook e outros apps do celular.</p>
+    <div class="row-btns"><button class="btn2" type="button" id="sh-text">Mandar só o texto</button><button class="btn2" type="button" id="sh-close">${afterSave ? "Agora não" : "Fechar"}</button></div>`, (sh) => {
+    const err = $("#sh-err", sh);
+    sh.querySelectorAll("[data-fmt],[data-tpl]").forEach((b) => b.onclick = () => {
+      const k = b.dataset.fmt ? "fmt" : "tpl"; SH[k] = b.dataset[k];
+      sh.querySelectorAll(`[data-${k}]`).forEach((x) => x.setAttribute("aria-pressed", x === b)); drawShare();
+    });
+    sh.querySelectorAll("[data-src]").forEach((b) => b.onclick = async () => {
+      err.textContent = "";
+      const kind = b.dataset.src;
+      if (kind === "none") SH.img = null;
+      else { const ok = await pickPhoto(kind, err); if (!ok) return; }
+      SH.src = kind; sh.querySelectorAll("[data-src]").forEach((x) => x.setAttribute("aria-pressed", x === b)); drawShare();
+    });
+    const r = $("#sh-route", sh); if (r) r.onchange = () => { SH.route = r.checked; drawShare(); };
+    $("#sh-go", sh).onclick = () => doShare($("#sh-go", sh), err);
+    $("#sh-text", sh).onclick = () => shareTextOnly(SH.act);
+    $("#sh-close", sh).onclick = closeSheet;
+    drawShare();
+    ShareCard.ensureFonts().then(drawShare);
+  });
+}
+function drawShare() {
+  const cv = $("#sh-canvas"); if (!cv || !SH.act) return;
+  const a = SH.act, before = myActs().filter((x) => x.id !== a.id);
+  const challenge = (!a.user_id || a.user_id === S.myId) && progressOf(myActs(), a.day).ok && !progressOf(before, a.day).ok;
+  const third = a.avg_hr ? { v: `${a.avg_hr} bpm`, l: "FC média" } : { v: `${kcalOf(a)} kcal`, l: "calorias" };
+  ShareCard.drawCard(cv, {
+    img: SH.img, fmt: SH.fmt, tpl: SH.tpl, route: SH.route, track: (a.track || []).map((p) => [p[0], p[1]]),
+    km: fmtKm(a.distance_m), typeLabel: TYPES[a.type].label, dayNo: dayOfYear(a.day), challenge,
+    date: new Date(a.started_at || parseKey(a.day)).toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" }).replace(/\./g, ""),
+    stats: [{ v: fmtTime(a.duration_s), l: "tempo" }, a.type === "bike" ? { v: `${speedStr(a.duration_s, a.distance_m)} km/h`, l: "média" } : { v: `${paceStr(a.duration_s, a.distance_m)} /km`, l: "ritmo" }, third],
+  });
+}
+function webPick(kind) {
+  return new Promise((res) => {
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+    if (kind === "camera") inp.capture = "environment"; if (kind === "selfie") inp.capture = "user";
+    inp.onchange = () => res(inp.files && inp.files[0] ? URL.createObjectURL(inp.files[0]) : null);
+    inp.addEventListener("cancel", () => res(null));
+    inp.click();
+  });
+}
+function mapSnapshot() {
+  return new Promise((res, rej) => {
+    if (!dMap) return rej(new Error("sem mapa"));
+    const t = setTimeout(() => rej(new Error("timeout")), 4000);
+    dMap.once("render", () => { clearTimeout(t); try { res(dMap.getCanvas().toDataURL("image/jpeg", 0.92)); } catch (e) { rej(e); } });
+    dMap.triggerRepaint();
+  });
+}
+async function pickPhoto(kind, err) {
   try {
-    if (navigator.share) { await navigator.share({ title: "Fôlego", text, url }); return; }
-  } catch (e) { if (e.name === "AbortError") return; }
-  try { await navigator.clipboard.writeText(text + " " + url); toast("Texto copiado. Cole no WhatsApp."); } catch { toast(text + " " + url, 6000); }
+    let src = null;
+    if (kind === "map") src = await mapSnapshot();
+    else if (NATIVE && kind === "gallery") { const r = await Camera.chooseFromGallery({ mediaType: 0, allowMultipleSelection: false, limit: 1, editable: "no", quality: 90 }); src = r?.results?.[0]?.webPath; }
+    else if (NATIVE) { const r = await Camera.takePhoto({ quality: 90, targetWidth: 1920, targetHeight: 1920, correctOrientation: true, cameraDirection: kind === "selfie" ? "FRONT" : "REAR", editable: "no", saveToGallery: false }); src = r?.webPath; }
+    else src = await webPick(kind);
+    if (!src) return false;
+    SH.img = await ShareCard.loadImg(src);
+    return true;
+  } catch (e) {
+    const m = String(e?.message || e);
+    if (!/cancel/i.test(m)) err.textContent = kind === "map" ? "Não deu para capturar o mapa. Espere ele carregar e tente de novo." : "Não foi possível abrir a câmera ou a galeria. Confira a permissão de câmera do Fôlego.";
+    return false;
+  }
+}
+async function doShare(btn, err) {
+  const cv = $("#sh-canvas"), a = SH.act; if (!cv || btn.disabled) return;
+  btn.disabled = true; const lbl = btn.querySelector("span"); lbl.textContent = "Preparando…";
+  const text = shareTextOf(a), name = `folego-${a.type}-${a.day}.jpg`;
+  try {
+    if (NATIVE) {
+      const b64 = cv.toDataURL("image/jpeg", 0.9).split(",")[1];
+      const w = await FS.writeFile({ path: name, data: b64, directory: "CACHE" });
+      await ShareP.share({ title: "Fôlego", text, files: [w.uri], dialogTitle: "Compartilhar treino" });
+    } else {
+      const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.9));
+      const file = new File([blob], name, { type: "image/jpeg" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], text, title: "Fôlego" });
+      else { const u = URL.createObjectURL(blob), l = document.createElement("a"); l.href = u; l.download = name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); toast("Imagem baixada. Agora é só postar."); }
+    }
+  } catch (e) {
+    if (!/cancel|abort/i.test(String(e?.message || e?.name || e))) err.textContent = "Não foi possível compartilhar agora. Tente de novo.";
+  } finally { btn.disabled = false; lbl.textContent = "Compartilhar imagem"; }
 }
 
 /* ============ folhas: perfil, lançamento manual ============ */
@@ -994,7 +1102,7 @@ document.addEventListener("click", async (e) => {
   else if (d === "kudo") toggleKudo(id);
   else if (d === "invite") invite();
   else if (d === "reload") { S.sbError = null; S.sb = null; render(); loadGroup().then(render); }
-  else if (d === "share" && current) shareAct(current);
+  else if (d === "share" && current) openShare(current);
   else if (d === "gpx" && current) downloadGpx(current);
   else if (d === "del-ask") { b.textContent = "Toque de novo para excluir"; b.dataset.do = "del-yes"; b.style.color = "var(--tartan)"; }
   else if (d === "del-yes" && current) delAct(current);

@@ -232,3 +232,9 @@ h2 button{font-family:var(--f-body);text-transform:none;letter-spacing:0;font-si
 .hr-state small{color:var(--muted)}
 .hr-state .ok{color:var(--ok)}
 @media (prefers-reduced-motion:reduce){#rec-hr[data-state="on"] svg,.hr-ico[data-state="on"] svg{animation:none}}
+
+/* ---- compartilhar com foto ---- */
+.sh-prev{display:flex;justify-content:center;background:var(--soft);border-radius:14px;padding:12px;margin-bottom:12px}
+.sh-prev canvas{display:block;max-width:100%;max-height:44vh;width:auto;height:auto;border-radius:8px;box-shadow:0 8px 22px -10px rgba(0,0,0,.5)}
+#sh-go:disabled{opacity:.6}
+.lead.center{text-align:center}
