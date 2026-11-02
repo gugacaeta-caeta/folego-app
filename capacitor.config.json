@@ -5,5 +5,15 @@
   "android": {
     "useLegacyBridge": true,
     "backgroundColor": "#F1F0EA"
+  },
+  "plugins": {
+    "BluetoothLe": {
+      "displayStrings": {
+        "scanning": "Procurando sensores…",
+        "cancel": "Cancelar",
+        "availableDevices": "Sensores encontrados",
+        "noDeviceFound": "Nenhum sensor encontrado. Confira se ele está ligado e transmitindo."
+      }
+    }
   }
 }

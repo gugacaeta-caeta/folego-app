@@ -177,3 +177,58 @@ h2 button{font-family:var(--f-body);text-transform:none;letter-spacing:0;font-si
 .maplibregl-ctrl-attrib{font-size:10px}
 #rec .maplibregl-ctrl-bottom-right,#rec .maplibregl-ctrl-bottom-left{bottom:var(--panel-h,260px)}
 @media (prefers-reduced-motion:reduce){.dot{animation:none}.prog i{transition:none}}
+
+/* ---- treinador, FC e diagnóstico ---- */
+.map-btn.tog[data-state="off"]{color:var(--muted)}
+.map-btn.tog[data-state="on"]{color:var(--tartan)}
+#rec-hr[data-state="on"] svg{fill:currentColor;animation:beat 1s infinite}
+#rec-hr[data-state="wait"]{color:#D9A23A}
+#rec-voice .i-off{display:none}
+#rec-voice[data-state="off"] .i-on{display:none}
+#rec-voice[data-state="off"] .i-off{display:block}
+@keyframes beat{0%,100%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}}
+.big-stats{grid-template-columns:repeat(3,1fr)}
+.bs b small{font-size:.5em;font-weight:600}
+.hrbs b em{font-style:normal;font-size:.55em;font-weight:800;vertical-align:.35em}
+.bs.main b{font-size:56px}
+.diag-play{margin-bottom:12px}
+.diag-play[data-playing]{background:var(--ink);color:var(--bg)}
+.diag{display:flex;flex-direction:column;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.diag-row{padding:12px 14px;border-top:1px solid var(--line)}
+.diag-row:first-child{border-top:0}
+.diag-row b{display:block;font-family:var(--f-display);text-transform:uppercase;letter-spacing:1px;font-size:13px;color:var(--tartan)}
+.diag-row p{margin:2px 0 0;font-size:14.5px;line-height:1.5}
+.zones{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.zrow{display:grid;grid-template-columns:8.6em minmax(0,1fr) 6.6em;gap:10px;align-items:center;font-size:13px}
+.zl{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zl i{width:10px;height:10px;border-radius:3px;flex:none}
+.zbar{height:8px;border-radius:4px;background:var(--soft);overflow:hidden}
+.zbar em{display:block;height:100%;border-radius:4px}
+.zv{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.set{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
+.set:first-child{border-top:0;margin-top:0;padding-top:0}
+.set h4{font-family:var(--f-display);font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px}
+.set .lead{margin:-4px 0 10px;font-size:13px}
+.lead.small{font-size:12.5px;margin-top:10px}
+.opts{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 14px}
+.opts .opt{border:1.5px solid var(--line);background:var(--bg);border-radius:10px;padding:8px 12px;font-weight:600;font-size:14px;text-align:left}
+.opts .opt[aria-pressed="true"]{border-color:var(--tartan);background:var(--tartan);color:var(--on-tartan)}
+.opts.styles{display:grid;grid-template-columns:1fr 1fr}
+.opts.styles .opt b{display:block;font-size:15px}
+.opts.styles .opt small{display:block;font-weight:500;font-size:12px;opacity:.8}
+.field select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:12px;font-size:15px;width:100%;min-width:0}
+.field input[type=range]{padding:0;border:0;background:none;accent-color:var(--tartan);height:32px}
+.field label output{float:right;color:var(--ink);font-weight:700;letter-spacing:0;text-transform:none}
+.checks{display:flex;flex-direction:column;gap:2px;margin:6px 0 12px}
+.checks label{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:14.5px}
+.checks input{width:20px;height:20px;accent-color:var(--tartan)}
+.switch small{color:var(--muted);font-weight:400}
+.btn2.wide{width:100%;margin-top:4px}
+.hr-state{display:flex;gap:12px;align-items:center;margin-bottom:6px}
+.hr-ico{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--soft);color:var(--muted);flex:none}
+.hr-ico svg{width:22px;height:22px}
+.hr-ico[data-state="on"]{color:var(--tartan)}
+.hr-ico[data-state="on"] svg{fill:currentColor;animation:beat 1s infinite}
+.hr-state small{color:var(--muted)}
+.hr-state .ok{color:var(--ok)}
+@media (prefers-reduced-motion:reduce){#rec-hr[data-state="on"] svg,.hr-ico[data-state="on"] svg{animation:none}}

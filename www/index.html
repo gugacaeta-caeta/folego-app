@@ -52,6 +52,13 @@
   <div class="map-tools">
     <button class="map-btn" id="rec-center" aria-label="Centralizar"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
     <button class="map-btn" id="rec-3d" aria-label="Alternar 2D e 3D">3D</button>
+    <button class="map-btn tog" id="rec-voice" data-state="on" aria-pressed="true" aria-label="Desligar voz do treinador">
+      <svg class="i-on" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+      <svg class="i-off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>
+    </button>
+    <button class="map-btn tog" id="rec-hr" data-state="off" aria-label="Conectar sensor cardíaco">
+      <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
+    </button>
   </div>
   <div class="gps" id="gps"><i></i><span>Procurando sinal de GPS…</span></div>
   <div class="rec-panel">
@@ -65,6 +72,8 @@
       <div class="bs"><b id="r-time">00:00</b><span>tempo</span></div>
       <div class="bs"><b id="r-pace">–</b><span id="r-pace-l">ritmo /km</span></div>
       <div class="bs"><b id="r-elev">0</b><span>m subida</span></div>
+      <div class="bs hrbs"><b><span id="r-hr">–</span> <em id="r-zone">–</em></b><span id="r-hr-l">sem sensor</span></div>
+      <div class="bs"><b id="r-kcal">0</b><span>kcal</span></div>
     </div>
     <div class="rec-ctrl" id="rec-ctrl"></div>
     <p class="hint" id="rec-hint">Deixe a tela ligada durante o treino. Com a tela apagada, o celular pode parar de mandar o GPS para o navegador.</p>

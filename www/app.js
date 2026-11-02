@@ -1,11 +1,11 @@
 // Fôlego — app de treinos com GPS em segundo plano, mapa 3D e turma de amigos.
 import * as maplibregl from "./vendor/maplibre/maplibre-gl.mjs";
 import { Capacitor, registerPlugin } from "./vendor/capacitor/core.mjs";
+import * as Coach from "./coach.js";
 
 // Recursos nativos do Android (no navegador comum o app cai para as APIs da web)
 const NATIVE = Capacitor.isNativePlatform();
 const BG = registerPlugin("BackgroundGeolocation");
-const TTS = registerPlugin("TextToSpeech");
 const Notif = registerPlugin("LocalNotifications");
 const Haptics = registerPlugin("Haptics");
 const ShareP = registerPlugin("Share");
@@ -109,7 +109,6 @@ const idb = (() => {
 const S = {
   nick: lsGet("folego.nick", ""),
   group: (new URLSearchParams(location.search).get("turma") || lsGet("folego.group", "") || CFG.defaultGroup || "").trim().toLowerCase(),
-  voice: lsGet("folego.voice", true),
   tab: "hoje", rankType: "all",
   mine: [],            // meus treinos (local)
   remote: null,        // treinos da turma (sem trilha)
@@ -139,7 +138,7 @@ async function sbReady() {
     return null;
   }
 }
-const LIST_COLS = "id,user_id,nick,type,distance_m,duration_s,elev_gain,started_at,day,has_track,created_at";
+const LIST_COLS = "id,user_id,nick,type,distance_m,duration_s,elev_gain,started_at,day,has_track,created_at,avg_hr,max_hr,kcal";
 async function loadGroup() {
   const sb = await sbReady(); if (!sb) return;
   const since = new Date(); since.setDate(since.getDate() - 35);
@@ -154,7 +153,7 @@ async function loadGroup() {
 }
 async function uploadAct(a) {
   const sb = await sbReady(); if (!sb) return false;
-  const row = { id: a.id, group_code: S.group, nick: S.nick || "Atleta", type: a.type, distance_m: a.distance_m, duration_s: a.duration_s, elapsed_s: a.elapsed_s, elev_gain: a.elev_gain || 0, started_at: a.started_at, day: a.day, track: a.track || null, splits: a.splits || null, has_track: !!(a.track && a.track.length > 1) };
+  const row = { id: a.id, group_code: S.group, nick: S.nick || "Atleta", type: a.type, distance_m: a.distance_m, duration_s: a.duration_s, elapsed_s: a.elapsed_s, elev_gain: a.elev_gain || 0, started_at: a.started_at, day: a.day, track: a.track || null, splits: a.splits || null, has_track: !!(a.track && a.track.length > 1), avg_hr: a.avg_hr || null, max_hr: a.max_hr || null, kcal: a.kcal ? Math.round(a.kcal) : null, hr: a.hr || null, zones: a.zones || null };
   const { error } = await sb.from("activities").upsert(row);
   if (error) { console.warn(error); return false; }
   a.synced = true; await idb.put(a); return true;
@@ -263,7 +262,7 @@ function listHtml(arr, emptyMsg, social = false) {
       <div class="av" style="background:${colorOf(a.user_id || S.myId || name)}">${esc(initials(name))}</div>
       <div class="act-head"><b>${esc(name)}</b><small>${relDate(a.day)}</small></div>
       <div class="act-title"><span class="chip ${t.cls}">${t.label}</span>${hasTrack ? '<span class="gps-tag">rota GPS</span>' : '<span class="gps-tag">lançado à mão</span>'}</div>
-      <div class="nums"><div><b>${fmtKm(a.distance_m)}</b>km</div><div><b>${fmtTime(a.duration_s)}</b>tempo</div><div><b>${perf(a)}</b>${a.type === "bike" ? "média" : "ritmo"}</div><div><b>${pts(a)}</b>pts</div></div>
+      <div class="nums"><div><b>${fmtKm(a.distance_m)}</b>km</div><div><b>${fmtTime(a.duration_s)}</b>tempo</div><div><b>${perf(a)}</b>${a.type === "bike" ? "média" : "ritmo"}</div><div><b>${pts(a)}</b>pts</div>${a.kcal ? `<div><b>${Math.round(a.kcal)}</b>kcal</div>` : ""}${a.avg_hr ? `<div><b>${a.avg_hr}</b>bpm méd.</div>` : ""}</div>
       <div class="act-foot">
         ${social && !own ? `<button class="kudo ${mineK ? "on" : ""}" data-do="kudo" data-id="${a.id}">${mineK ? "Aplaudido" : "Aplaudir"}${kd.length ? " · " + kd.length : ""}</button>` : kd.length ? `<span class="gps-tag">${kd.length} ${kd.length > 1 ? "aplausos" : "aplauso"}</span>` : ""}
         <button class="open" data-do="detail" data-id="${a.id}">${hasTrack ? "Ver em 3D" : "Detalhes"} →</button>
@@ -361,12 +360,14 @@ function setEndsRaw(map, a, b) {
 function boundsOf(coords) { const b = new maplibregl.LngLatBounds(coords[0], coords[0]); coords.forEach((c) => b.extend(c)); return b; }
 
 /* ============ gravação com GPS ============ */
-const REC = Object.assign({ status: "idle", type: "run", pts: [], dist: 0, moving: 0, elevGain: 0, elevRef: null, start: null, pausedAt: null, pausedTotal: 0, splits: [], lastFix: null, follow: true }, lsGet("folego.rec", {}));
+const recBlank = () => ({ pts: [], dist: 0, moving: 0, elevGain: 0, elevRef: null, start: null, pausedAt: null, pausedTotal: 0, splits: [],
+  hr: [], hrSum: 0, hrSecs: 0, hrMaxSeen: 0, zones: [0, 0, 0, 0, 0], lastHrAt: 0, kcal: 0, kcalHrPart: 0, nextCue: Coach.coach.every, challengeSaid: false });
+const REC = Object.assign({ status: "idle", type: "run", lastFix: null, follow: true }, recBlank(), lsGet("folego.rec", {}));
 if (REC.status === "rec") REC.status = "paused", REC.pausedAt = REC.pausedAt || Date.now(); // recuperado após fechar a página
 let recMap = null, meMarker = null, watchId = null, wake = null, tick = null, saveN = 0;
 
 function persistRec() { const { lastFix, ...rest } = REC; lsSet("folego.rec", rest); }
-function clearRec() { Object.assign(REC, { status: "idle", pts: [], dist: 0, moving: 0, elevGain: 0, elevRef: null, start: null, pausedAt: null, pausedTotal: 0, splits: [] }); try { localStorage.removeItem("folego.rec"); } catch {} }
+function clearRec() { Object.assign(REC, { status: "idle" }, recBlank()); try { localStorage.removeItem("folego.rec"); } catch {} }
 const elapsed = () => (REC.start ? (REC.pausedAt || Date.now()) - REC.start - REC.pausedTotal : 0);
 
 async function holdWake(on) {
@@ -378,11 +379,38 @@ async function holdWake(on) {
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && REC.status === "rec") holdWake(true); });
 
-function say(text) {
-  if (!S.voice) return;
-  if (NATIVE) { TTS.speak({ text, lang: "pt-BR", rate: 1.0, category: "playback" }).catch(() => {}); return; }
-  if (!("speechSynthesis" in window)) return;
-  try { const u = new SpeechSynthesisUtterance(text); u.lang = "pt-BR"; u.rate = 1.05; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch {}
+const say = (text) => Coach.speak(text);
+
+/* ---- frequência cardíaca durante a gravação ---- */
+Coach.onHr((h) => {
+  if (REC.status === "rec" && h.bpm) {
+    const now = Date.now(), dt = REC.lastHrAt ? Math.min(5, (now - REC.lastHrAt) / 1000) : 1;
+    REC.lastHrAt = now;
+    REC.hrSum += h.bpm * dt; REC.hrSecs += dt; REC.hrMaxSeen = Math.max(REC.hrMaxSeen, h.bpm);
+    REC.zones[Coach.zoneOf(h.bpm) - 1] += dt;
+    const perMin = Coach.hrKcalPerMin(h.bpm);
+    if (perMin != null) { REC.kcal += (perMin * dt) / 60; REC.kcalHrPart += (perMin * dt) / 60; }
+    const t = Math.round(elapsed() / 1000), last = REC.hr[REC.hr.length - 1];
+    if (!last || t - last[0] >= 5) REC.hr.push([t, h.bpm]);
+  }
+  paintHr();
+});
+function paintHr() {
+  const btn = $("#rec-hr"); if (!btn) return;
+  const h = Coach.hr, fresh = Coach.hrFresh();
+  btn.dataset.state = fresh ? "on" : h.status === "connecting" || h.status === "lost" ? "wait" : "off";
+  btn.setAttribute("aria-label", fresh ? `Sensor cardíaco conectado, ${h.bpm} batimentos` : "Conectar sensor cardíaco");
+  $("#r-hr").textContent = fresh ? h.bpm : "–";
+  const z = fresh ? Coach.zoneOf(h.bpm) : 0;
+  $("#r-zone").textContent = z ? "Z" + z : "";
+  $("#r-zone").style.color = z ? Coach.ZONES[z - 1].color : "";
+  $("#r-hr-l").textContent = fresh ? "bpm" : h.status === "connecting" ? "conectando…" : h.status === "lost" ? "sinal perdido" : "sem sensor";
+}
+function paintVoiceBtn() {
+  const b = $("#rec-voice"); if (!b) return;
+  b.dataset.state = Coach.coach.on ? "on" : "off";
+  b.setAttribute("aria-label", Coach.coach.on ? "Desligar voz do treinador" : "Ligar voz do treinador");
+  b.setAttribute("aria-pressed", Coach.coach.on);
 }
 
 function openRec() {
@@ -398,6 +426,7 @@ function openRec() {
   }
   setTimeout(() => recMap.resize(), 50);
   startWatch();
+  Coach.hrAuto(); paintHr(); paintVoiceBtn();
   const ph = $(".rec-panel").offsetHeight; $("#rec").style.setProperty("--panel-h", ph + 8 + "px");
 }
 function closeRec() {
@@ -473,21 +502,34 @@ function onFix(pos) {
   REC.pts.push(p);
   const prevKm = Math.floor(REC.dist / 1000);
   REC.dist += d;
-  if (d / dt >= TYPES[REC.type].moveMin && dt < 30) REC.moving += dt;
-  else REC.moving += Math.min(dt, d / TYPES[REC.type].moveMin); // trecho lento: conta só o tempo plausível
+  const mdt = d / dt >= TYPES[REC.type].moveMin && dt < 30 ? dt : Math.min(dt, d / TYPES[REC.type].moveMin); // trecho lento: conta só o tempo plausível
+  REC.moving += mdt;
+  if (!Coach.hrCalReady()) REC.kcal += Coach.metKcal(REC.type, d, mdt); // sem sensor (ou sem idade): estimativa por peso e ritmo
   if (p[2] != null && acc <= 20) {
     if (REC.elevRef == null) REC.elevRef = p[2];
     else if (p[2] - REC.elevRef > 4) { REC.elevGain += p[2] - REC.elevRef; REC.elevRef = p[2]; }
     else if (REC.elevRef - p[2] > 4) REC.elevRef = p[2];
   }
   const km = Math.floor(REC.dist / 1000);
+  let newSplit = null;
   if (km > prevKm) {
     const prevT = REC.splits.reduce((s, x) => s + x, 0);
-    const split = REC.moving - prevT; REC.splits.push(Math.round(split));
+    newSplit = Math.round(REC.moving - prevT); REC.splits.push(newSplit);
+  }
+  if (REC.dist >= REC.nextCue) {
+    while (REC.nextCue <= REC.dist) REC.nextCue += Coach.coach.every;
     if (NATIVE) Haptics.vibrate({ duration: 400 }).catch(() => {});
     else try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
-    const ps = paceStr(split, 1000).split(":");
-    say(REC.type === "bike" ? `${km} quilômetros. Média ${speedStr(REC.moving, REC.dist)} quilômetros por hora.` : `${km} ${km > 1 ? "quilômetros" : "quilômetro"}. Último quilômetro em ${+ps[0]} minutos e ${+ps[1]} segundos.`);
+    // o desafio do dia fecha com este treino?
+    let challengeDone = false;
+    if (!REC.challengeSaid) {
+      const day = dkey(new Date(REC.start));
+      const live = { type: REC.type, day, distance_m: REC.dist, duration_s: REC.moving };
+      if (day === today() && !progressOf(myActs(), day).ok && progressOf(myActs().concat([live]), day).ok) { challengeDone = true; REC.challengeSaid = true; }
+    }
+    const n = REC.splits.length;
+    say(Coach.cue({ type: REC.type, dist: Math.floor(REC.dist / 100) * 100, moving: REC.moving, split: newSplit, prevSplit: newSplit && n >= 2 ? REC.splits[n - 2] : null,
+      bpm: Coach.hrFresh() ? Coach.hr.bpm : null, kcal: REC.kcal, challengeDone }));
   }
   if (recMap && recMap.isStyleLoaded()) setRoute(recMap, REC.pts.map((q) => [q[0], q[1]]));
   if (NATIVE || ++saveN % 3 === 0) persistRec();
@@ -504,6 +546,7 @@ function paintRecStats() {
   $("#r-time").textContent = fmtTime(REC.status === "idle" ? 0 : REC.moving + (REC.status === "rec" && REC.pts.length ? Math.min(30, (Date.now() - REC.pts[REC.pts.length - 1][3]) / 1000) : 0));
   $("#r-pace").textContent = REC.type === "bike" ? speedStr(REC.moving, REC.dist) : paceStr(REC.moving, REC.dist);
   $("#r-elev").textContent = Math.round(REC.elevGain);
+  $("#r-kcal").textContent = Math.round(REC.kcal);
 }
 let confirmStop = false;
 function paintRecCtrl() {
@@ -519,9 +562,9 @@ function paintRecCtrl() {
 function recAction(a) {
   if (a === "start") {
     if (!REC.lastFix) { toast("Aguarde o sinal do GPS aparecer no topo da tela."); return; }
-    Object.assign(REC, { status: "rec", start: Date.now(), pts: [], dist: 0, moving: 0, elevGain: 0, splits: [], pausedTotal: 0, pausedAt: null, follow: true });
+    Object.assign(REC, recBlank(), { status: "rec", start: Date.now(), follow: true });
     if (REC.lastFix[4] <= 35) { REC.pts.push(REC.lastFix); REC.elevRef = REC.lastFix[2]; }
-    holdWake(true); say("Treino iniciado. Bom treino!");
+    holdWake(true); say(Coach.line("start"));
     try { recMap.easeTo({ pitch: 60, zoom: 16.5, duration: 800 }); } catch {}
   } else if (a === "pause") { REC.status = "paused"; REC.pausedAt = Date.now(); confirmStop = false; say("Pausado."); }
   else if (a === "resume" || a === "keep") {
@@ -529,6 +572,7 @@ function recAction(a) {
     REC.pausedAt = null; REC.status = "rec"; confirmStop = false; holdWake(true);
     // não liga o último ponto ao primeiro após a pausa como se fosse corrida
     const last = REC.pts[REC.pts.length - 1]; if (last) last[3] = Date.now();
+    REC.lastHrAt = 0;
     if (a === "resume") say("Continuando.");
   } else if (a === "ask") { confirmStop = true; }
   else if (a === "discard") { confirmStop = false; clearRec(); holdWake(false); setRoute(recMap, []); toast("Treino descartado"); }
@@ -543,13 +587,15 @@ async function finishRec() {
     id: uid(), type: REC.type, distance_m: Math.round(REC.dist), duration_s: Math.round(REC.moving), elapsed_s: Math.round(elapsed() / 1000),
     elev_gain: Math.round(REC.elevGain), started_at: new Date(REC.start).toISOString(), day: dkey(new Date(REC.start)),
     track: simp, splits: REC.splits.slice(), synced: false,
+    kcal: Math.round(REC.kcal), kcal_by: REC.kcalHrPart > REC.kcal * 0.5 ? "fc" : "ritmo",
   };
+  if (REC.hrSecs >= 30) Object.assign(a, { avg_hr: Math.round(REC.hrSum / REC.hrSecs), max_hr: REC.hrMaxSeen, hr: REC.hr.slice(), zones: REC.zones.map((z) => Math.round(z)) });
   const before = progressOf(myActs(), a.day).ok;
   await idb.put(a); S.mine.push(a);
   clearRec(); holdWake(false); stopWatch();
   if (recMap) setRoute(recMap, []);
   $("#rec").hidden = true; document.body.style.overflow = "";
-  say(`Treino salvo. ${(a.distance_m / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} quilômetros.`);
+  say(`${Coach.line("end")} ${(a.distance_m / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} quilômetros. Toque em ouvir diagnóstico para a análise completa.`);
   const ok = progressOf(myActs(), a.day).ok && !before && a.day === today();
   toast(ok ? `Desafio do dia concluído! +${BONUS} pts` : `Treino salvo · ${pts(a)} pts`);
   S.tab = "hoje"; setTab("hoje");
@@ -564,7 +610,7 @@ let dMap = null, flyRAF = null, current = null;
 async function findAct(id) {
   let a = S.mine.find((x) => x.id === id) || (S.remote || []).find((x) => x.id === id);
   if (a && a.has_track && !a.track && S.sb) {
-    const { data } = await S.sb.from("activities").select("track,splits").eq("id", id).single();
+    const { data } = await S.sb.from("activities").select("track,splits,hr,zones").eq("id", id).single();
     if (data) a = { ...a, ...data };
   }
   return a;
@@ -583,13 +629,19 @@ async function openDetail(id) {
   $("#detail-body").innerHTML = `
     <span class="chip ${TYPES[a.type].cls}">${TYPES[a.type].label}</span>
     <div class="d-title">${esc(own ? S.nick || "Você" : a.nick || "Atleta")} · ${fmtKm(a.distance_m)} km</div>
-    <div class="d-meta">${when.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}${a.started_at ? " às " + when.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}</div>
+    <div class="d-meta">${when.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}${a.started_at ? " às " + when.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""} · ${pts(a)} pts</div>
     <div class="grid4">
       <div class="stat"><b>${fmtTime(a.duration_s)}</b><span>tempo em movimento</span></div>
       <div class="stat"><b>${perf(a)}</b><span>${a.type === "bike" ? "velocidade média" : "ritmo médio"}</span></div>
       <div class="stat"><b>${Math.round(a.elev_gain || 0)} m</b><span>subida acumulada</span></div>
-      <div class="stat"><b>${pts(a)}</b><span>pontos</span></div>
+      <div class="stat"><b>${kcalOf(a)}</b><span>kcal${a.kcal_by === "fc" ? " (pela FC)" : " estimadas"}</span></div>
+      ${a.avg_hr ? `<div class="stat"><b>${a.avg_hr} <small>bpm</small></b><span>FC média</span></div><div class="stat"><b>${a.max_hr} <small>bpm</small></b><span>FC máxima</span></div>` : ""}
     </div>
+    ${own ? `<h2>Diagnóstico do treino</h2>
+    <button class="cta red diag-play" data-do="diag-play" id="diag-play"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M7 5l12 7-12 7z" class="fill"/></svg><span>Ouvir diagnóstico</span></button>
+    <div class="diag" id="diag"></div>` : ""}
+    ${a.avg_hr && (a.hr || []).length > 3 ? `<h2>Frequência cardíaca</h2><canvas class="chart" id="hr-chart"></canvas>` : ""}
+    ${a.zones ? `<h2>Tempo por zona</h2>${zonesHtml(a.zones)}` : ""}
     ${coords.length > 1 && (a.track || []).some((p) => p[2] != null) ? `<h2>Altimetria</h2><canvas class="chart" id="elev-chart"></canvas>` : ""}
     ${splits.length ? `<h2>Parciais por km</h2><div style="overflow-x:auto"><table class="splits"><thead><tr><th>Km</th><th>${a.type === "bike" ? "km/h" : "Ritmo"}</th><th style="width:45%"></th></tr></thead><tbody>
       ${splits.map((s, i) => `<tr><td>${i + 1}</td><td class="${s === best && splits.length > 1 ? "best" : ""}">${a.type === "bike" ? speedStr(s, 1000) : paceStr(s, 1000)}</td><td><span class="bar" style="width:${Math.round(35 + 65 * (1 - (s - best) / Math.max(1, worst - best)))}%"></span></td></tr>`).join("")}
@@ -610,8 +662,47 @@ async function openDetail(id) {
     setTimeout(() => { dMap.resize(); }, 60);
     drawElev(a.track);
   }
+  if (a.avg_hr && (a.hr || []).length > 3) drawHr(a.hr);
+  if (own) {
+    const others = myActs().filter((x) => x.id !== a.id && (x.started_at || "") < (a.started_at || "~"));
+    const ws = weekStart(parseKey(a.day)), we = new Date(ws); we.setDate(ws.getDate() + 7);
+    const weekActs = myActs().filter((x) => { const d = parseKey(x.day); return d >= ws && d < we && (x.started_at || "") <= (a.started_at || ""); });
+    let challenge = null;
+    if (a.day === today()) {
+      const pNow = progressOf(myActs(), a.day), pBefore = progressOf(others, a.day), c = pNow.c;
+      const left = c.target - pNow.done, unit = c.metric === "km" ? "km" : "min";
+      const leftTxt = c.metric === "km" ? left.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : Math.ceil(left);
+      const counts = c.type === "any" || c.type === a.type;
+      challenge = !counts && !pNow.ok ? { text: `O desafio de hoje é outro: ${c.goal.toLowerCase()}.`, speech: `O desafio de hoje é outro: ${c.goal.toLowerCase()}.` }
+        : pNow.ok && !pBefore.ok ? { text: "Esse treino fechou o desafio do dia.", speech: "E com esse treino você fechou o desafio do dia!" }
+        : pNow.ok ? { text: "Desafio do dia já estava concluído.", speech: "O desafio do dia já estava concluído." }
+        : { text: `Faltam ${leftTxt} ${unit} para o desafio do dia (${c.goal.toLowerCase()}).`, speech: `Faltam ${leftTxt} ${unit === "km" ? "quilômetros" : "minutos"} para fechar o desafio do dia.` };
+    }
+    const dg = Coach.diagnose({ ...a, kcal: kcalOf(a) }, others, { weekActs, challenge });
+    current.diag = dg;
+    $("#diag").innerHTML = dg.items.map((i) => `<div class="diag-row"><b>${esc(i.title)}</b><p>${esc(i.text)}</p></div>`).join("");
+  }
 }
-function closeDetail() { stopFly(); $("#detail").hidden = true; document.body.style.overflow = ""; current = null; render(); }
+function kcalOf(a) { return Math.round(a.kcal || Coach.metKcal(a.type, a.distance_m, a.duration_s)); }
+function zonesHtml(z) {
+  const tot = z.reduce((s, x) => s + x, 0) || 1;
+  return `<div class="zones">${Coach.ZONES.map((Z, i) => `<div class="zrow"><span class="zl"><i style="background:${Z.color}"></i>Z${Z.n} ${Z.name}</span><span class="zbar"><em style="width:${Math.max(1, Math.round((z[i] / tot) * 100))}%;background:${Z.color}"></em></span><span class="zv">${fmtDur(z[i])} · ${Math.round((z[i] / tot) * 100)}%</span></div>`).join("")}</div>`;
+}
+function drawHr(hr) {
+  const cv = $("#hr-chart"); if (!cv) return;
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr; const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  const css = getComputedStyle(document.documentElement), ink = css.getPropertyValue("--muted").trim(), line = css.getPropertyValue("--line").trim(), inkStrong = css.getPropertyValue("--ink").trim();
+  const max = Coach.hrMaxOf(), lo = Math.min(Math.floor(max * 0.5), ...hr.map((x) => x[1])) - 5, hi = Math.max(max, ...hr.map((x) => x[1])) + 3, T = hr[hr.length - 1][0] || 1;
+  const L = 40, R = 12, Tp = 10, B = 22, x = (t) => L + (t / T) * (W - L - R), y = (v) => Tp + (1 - (v - lo) / (hi - lo)) * (H - Tp - B);
+  // faixas das zonas
+  [0.5, 0.6, 0.7, 0.8, 0.9, 1.2].forEach((f, i, arr) => { if (i === arr.length - 1) return; const a1 = Math.max(lo, max * f), a2 = Math.min(hi, max * arr[i + 1]); if (a2 <= a1) return; g.globalAlpha = 0.1; g.fillStyle = Coach.ZONES[i].color; g.fillRect(L, y(a2), W - L - R, y(a1) - y(a2)); });
+  g.globalAlpha = 1; g.font = "11px Figtree, system-ui, sans-serif"; g.fillStyle = ink; g.strokeStyle = line; g.lineWidth = 1;
+  [lo + 5, Math.round((lo + hi) / 2), hi - 3].forEach((v) => { g.beginPath(); g.moveTo(L, y(v)); g.lineTo(W - R, y(v)); g.stroke(); g.fillText(Math.round(v), 6, y(v) + 4); });
+  g.fillText("0", L, H - 6); const endTxt = fmtDur(T); g.fillText(endTxt, W - R - g.measureText(endTxt).width, H - 6);
+  g.beginPath(); hr.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(p[1])) : g.moveTo(x(p[0]), y(p[1])))); g.strokeStyle = inkStrong; g.lineWidth = 1.8; g.stroke();
+}
+function closeDetail() { if ($("#diag-play")?.dataset.playing) { diagSeq++; Coach.stopSpeak(); } stopFly(); $("#detail").hidden = true; document.body.style.overflow = ""; current = null; render(); }
 
 function drawElev(track) {
   const cv = $("#elev-chart"); if (!cv) return;
@@ -699,30 +790,142 @@ function closeSheet() { $("#sheet-bg").hidden = true; $("#sheet").innerHTML = ""
 $("#sheet-bg").addEventListener("click", (e) => { if (e.target.id === "sheet-bg" && S.nick) closeSheet(); });
 
 function openProfile(first = false) {
-  openSheet(`<h3>${first ? "Bem-vindo ao Fôlego" : "Seu perfil"}</h3>
-    ${first ? '<p class="lead">Escolha como a turma vai te ver. Não precisa criar conta nem senha.</p>' : ""}
+  if (first) {
+    openSheet(`<h3>Bem-vindo ao Fôlego</h3>
+    <p class="lead">Escolha como a turma vai te ver. Não precisa criar conta nem senha.</p>
     <form id="pf" novalidate>
       <div class="field"><label for="pf-nick">Seu apelido</label><input id="pf-nick" maxlength="24" autocomplete="nickname" value="${esc(S.nick)}" placeholder="Ex.: Guga"></div>
       <div class="field"><label for="pf-group">Código da turma</label><input id="pf-group" maxlength="30" autocapitalize="none" value="${esc(S.group)}" placeholder="Ex.: corredores-da-vila"></div>
-      <p class="lead" style="margin-top:-4px">Quem usar o mesmo código vê os mesmos treinos e entra no mesmo ranking.</p>
-      <label class="switch"><span>Avisos por voz a cada km</span><input type="checkbox" id="pf-voice" ${S.voice ? "checked" : ""}></label>
+      <p class="lead" style="margin-top:-4px">Peso, idade, voz do treinador e sensor cardíaco ficam em Ajustes, tocando no seu nome.</p>
       <div class="err" id="pf-err"></div>
-      <button class="cta red" type="submit">${first ? "Começar" : "Salvar"}</button>
-      ${!first && S.group ? '<button class="btn2" type="button" id="pf-invite" style="width:100%;margin-top:8px">Convidar amigos para a turma</button>' : ""}
+      <button class="cta red" type="submit">Começar</button>
+    </form>`, (sh) => $("#pf", sh).addEventListener("submit", (e) => { e.preventDefault(); saveProfile(sh); }));
+    return;
+  }
+  const c = Coach.coach, b = Coach.body;
+  const chip = (name, val, cur, label) => `<button type="button" class="opt" data-set="${name}" data-v="${val}" aria-pressed="${String(cur) === String(val)}">${label}</button>`;
+  openSheet(`<h3>Ajustes</h3>
+    <form id="pf" novalidate>
+      <section class="set">
+        <h4>Perfil</h4>
+        <div class="field"><label for="pf-nick">Seu apelido</label><input id="pf-nick" maxlength="24" autocomplete="nickname" value="${esc(S.nick)}"></div>
+        <div class="field"><label for="pf-group">Código da turma</label><input id="pf-group" maxlength="30" autocapitalize="none" value="${esc(S.group)}" placeholder="Ex.: corredores-da-vila"></div>
+        ${S.group ? '<button class="btn2 wide" type="button" id="pf-invite">Convidar amigos para a turma</button>' : ""}
+      </section>
+
+      <section class="set">
+        <h4>Seu corpo</h4>
+        <p class="lead">Usado para calcular calorias e zonas cardíacas. Fica só no seu celular.</p>
+        <div class="two">
+          <div class="field"><label for="pf-w">Peso (kg)</label><input id="pf-w" inputmode="decimal" value="${b.weight ?? ""}" placeholder="70"></div>
+          <div class="field"><label for="pf-age">Idade</label><input id="pf-age" inputmode="numeric" value="${b.age ?? ""}" placeholder="35"></div>
+        </div>
+        <div class="lbl">Sexo (para a fórmula de calorias)</div>
+        <div class="opts">${chip("sex", "", b.sex, "Prefiro não dizer")}${chip("sex", "m", b.sex, "Masculino")}${chip("sex", "f", b.sex, "Feminino")}</div>
+        <div class="field"><label for="pf-hrmax">FC máxima (bpm)</label><input id="pf-hrmax" inputmode="numeric" value="${b.hrMax ?? ""}" placeholder="Automática: ${Coach.hrMaxOf()}"></div>
+      </section>
+
+      <section class="set">
+        <h4>Treinador por voz</h4>
+        <label class="switch"><span><b>Voz durante o treino</b><br><small>Avisos e incentivo enquanto você treina</small></span><input type="checkbox" id="pf-voice" ${c.on ? "checked" : ""}></label>
+        <div class="lbl">Estilo do treinador</div>
+        <div class="opts styles">${Object.entries(Coach.STYLES).map(([k, v]) => `<button type="button" class="opt" data-set="style" data-v="${k}" aria-pressed="${c.style === k}"><b>${v.label}</b><small>${v.desc}</small></button>`).join("")}</div>
+        <div class="field"><label for="pf-vname">Voz</label><select id="pf-vname"><option value="">Padrão do celular</option></select></div>
+        <div class="field"><label for="pf-rate">Velocidade da fala <output id="o-rate">${c.rate.toFixed(1)}×</output></label><input type="range" id="pf-rate" min="0.6" max="1.6" step="0.1" value="${c.rate}"></div>
+        <div class="field"><label for="pf-pitch">Tom da voz <output id="o-pitch">${c.pitch.toFixed(1)}</output></label><input type="range" id="pf-pitch" min="0.6" max="1.6" step="0.1" value="${c.pitch}"></div>
+        <div class="lbl">Avisar a cada</div>
+        <div class="opts">${chip("every", 500, c.every, "500 m")}${chip("every", 1000, c.every, "1 km")}${chip("every", 2000, c.every, "2 km")}${chip("every", 5000, c.every, "5 km")}</div>
+        <div class="lbl">O que o treinador fala</div>
+        <div class="checks">
+          ${[["time", "Tempo total"], ["pace", "Ritmo ou velocidade média"], ["split", "Tempo do último km"], ["hr", "Frequência cardíaca e zona"], ["kcal", "Calorias"], ["cheer", "Frases de incentivo"]].map(([k, l]) => `<label><input type="checkbox" data-say="${k}" ${c.say[k] ? "checked" : ""}> ${l}</label>`).join("")}
+        </div>
+        <button class="btn2 wide" type="button" id="pf-test">Testar voz</button>
+      </section>
+
+      <section class="set">
+        <h4>Sensor cardíaco</h4>
+        <div id="hr-box"></div>
+      </section>
+
+      <div class="err" id="pf-err"></div>
+      <button class="cta red" type="submit">Salvar</button>
     </form>`, (sh) => {
-    $("#pf", sh).addEventListener("submit", (e) => {
-      e.preventDefault();
-      const nick = $("#pf-nick", sh).value.trim(), group = $("#pf-group", sh).value.trim().toLowerCase().replace(/[^a-z0-9\-_.]/g, "-").replace(/-+/g, "-");
-      if (!nick) { $("#pf-err", sh).textContent = "Escreva um apelido para a turma te reconhecer."; return; }
-      const changed = group !== S.group;
-      S.nick = nick; S.group = group; S.voice = $("#pf-voice", sh).checked;
-      lsSet("folego.nick", nick); lsSet("folego.group", group); lsSet("folego.voice", S.voice);
-      if (changed) { S.remote = null; S.kudos = []; history.replaceState(null, "", group ? "?turma=" + encodeURIComponent(group) : location.pathname); }
-      closeSheet(); render();
-      if (groupEnabled()) { syncPending(); loadGroup().then(render); }
+    const saveC = () => Coach.saveCoach();
+    sh.querySelectorAll("[data-set]").forEach((btn) => btn.onclick = () => {
+      const k = btn.dataset.set, v = btn.dataset.v;
+      sh.querySelectorAll(`[data-set="${k}"]`).forEach((x) => x.setAttribute("aria-pressed", x === btn));
+      if (k === "sex") { Coach.body.sex = v; Coach.saveBody(); }
+      else if (k === "every") { Coach.coach.every = +v; saveC(); }
+      else if (k === "style") { Coach.coach.style = v; saveC(); Coach.speak(Coach.line("start"), { force: true }); }
     });
+    $("#pf-voice", sh).onchange = (e) => { Coach.coach.on = e.target.checked; saveC(); };
+    sh.querySelectorAll("[data-say]").forEach((x) => x.onchange = () => { Coach.coach.say[x.dataset.say] = x.checked; saveC(); });
+    $("#pf-rate", sh).oninput = (e) => { Coach.coach.rate = +e.target.value; $("#o-rate", sh).textContent = Coach.coach.rate.toFixed(1) + "×"; saveC(); };
+    $("#pf-pitch", sh).oninput = (e) => { Coach.coach.pitch = +e.target.value; $("#o-pitch", sh).textContent = Coach.coach.pitch.toFixed(1); saveC(); };
+    const sel = $("#pf-vname", sh);
+    Coach.listVoices().then((vs) => {
+      sel.innerHTML = `<option value="">Padrão do celular</option>` + vs.map((v) => `<option value="${esc(v.uri)}" ${v.uri === Coach.coach.voiceURI ? "selected" : ""}>${esc(v.label)}</option>`).join("");
+      if (!vs.length) sel.insertAdjacentHTML("afterend", '<p class="lead">Nenhuma voz em português encontrada. Instale em Configurações do Android → Idioma → Saída de texto para voz.</p>');
+    });
+    sel.onchange = () => { Coach.coach.voiceURI = sel.value; saveC(); Coach.speak("Olá! Esta é a minha voz.", { force: true }); };
+    $("#pf-test", sh).onclick = () => Coach.speak(Coach.cue({ type: "run", dist: 3000, moving: 16 * 60 + 30, split: 318, prevSplit: 331, bpm: Coach.hrFresh() ? Coach.hr.bpm : 152, kcal: 210 }), { force: true });
     const inv = $("#pf-invite", sh); if (inv) inv.onclick = invite;
+    renderHrBox(sh);
+    $("#pf", sh).addEventListener("submit", (e) => { e.preventDefault(); saveProfile(sh); });
   });
+}
+function openHrSheet() {
+  openSheet(`<h3>Sensor cardíaco</h3><div id="hr-box"></div><button class="cta" type="button" id="hr-done" style="margin-top:14px">Pronto</button>`, (sh) => { renderHrBox(sh); $("#hr-done", sh).onclick = () => { closeSheet(); paintHr(); }; });
+}
+function saveProfile(sh) {
+  const nick = $("#pf-nick", sh).value.trim(), group = $("#pf-group", sh).value.trim().toLowerCase().replace(/[^a-z0-9\-_.]/g, "-").replace(/-+/g, "-");
+  const err = $("#pf-err", sh);
+  if (!nick) { err.textContent = "Escreva um apelido para a turma te reconhecer."; return; }
+  const w = $("#pf-w", sh);
+  if (w) {
+    const kg = parseFloat((w.value || "").replace(",", ".")), age = parseInt($("#pf-age", sh).value), hm = parseInt($("#pf-hrmax", sh).value);
+    if (w.value && !(kg >= 25 && kg <= 250)) { err.textContent = "Peso deve ficar entre 25 e 250 kg."; return; }
+    if ($("#pf-age", sh).value && !(age >= 10 && age <= 100)) { err.textContent = "Idade deve ficar entre 10 e 100 anos."; return; }
+    if ($("#pf-hrmax", sh).value && !(hm >= 120 && hm <= 230)) { err.textContent = "FC máxima deve ficar entre 120 e 230 bpm, ou deixe em branco."; return; }
+    Object.assign(Coach.body, { weight: w.value ? Math.round(kg * 10) / 10 : null, age: $("#pf-age", sh).value ? age : null, hrMax: $("#pf-hrmax", sh).value ? hm : null });
+    Coach.saveBody();
+  }
+  const changed = group !== S.group;
+  S.nick = nick; S.group = group;
+  lsSet("folego.nick", nick); lsSet("folego.group", group);
+  if (changed) { S.remote = null; S.kudos = []; if (!NATIVE) history.replaceState(null, "", group ? "?turma=" + encodeURIComponent(group) : location.pathname); }
+  closeSheet(); render(); toast("Ajustes salvos");
+  if (groupEnabled()) { syncPending(); loadGroup().then(render); }
+}
+function renderHrBox(root) {
+  const box = $("#hr-box", root); if (!box) return;
+  const h = Coach.hr, fresh = Coach.hrFresh();
+  const st = fresh ? `<b class="ok">Conectado</b> · ${h.bpm} bpm` : h.status === "connecting" ? "Conectando…" : h.status === "lost" ? "Sinal perdido, tentando de novo…" : h.id ? "Desconectado" : "Nenhum sensor";
+  box.innerHTML = `
+    <div class="hr-state"><span class="hr-ico" data-state="${fresh ? "on" : h.status === "off" ? "off" : "wait"}"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></span>
+      <div><b>${esc(h.name || "Sensor cardíaco")}</b><br><small>${st}${h.battery != null ? ` · bateria ${h.battery}%` : ""}</small></div></div>
+    ${h.error ? `<p class="err">${esc(h.error)}</p>` : ""}
+    <div class="row-btns">
+      <button class="btn2" type="button" data-hr="pick">${h.id ? "Trocar sensor" : "Conectar sensor"}</button>
+      ${h.id ? `<button class="btn2" type="button" data-hr="${h.status === "off" ? "connect" : "forget"}">${h.status === "off" ? "Reconectar" : "Desconectar"}</button>` : ""}
+    </div>
+    <p class="lead small">O celular sozinho não mede batimentos. Funciona com cintas peitorais Bluetooth (Polar, Garmin, Coospo, Magene, Wahoo) e relógios que transmitem a frequência: Amazfit e Mi Band com "Transmitir frequência cardíaca" ligado, Garmin com "Transmitir FC", Coros e Suunto.</p>`;
+  box.querySelectorAll("[data-hr]").forEach((b) => b.onclick = async () => {
+    const k = b.dataset.hr;
+    if (k === "pick") await Coach.hrPick(); else if (k === "connect") Coach.hrConnect(); else await Coach.hrDisconnect(true);
+    renderHrBox(root);
+  });
+}
+Coach.onHr(() => { const sh = $("#sheet"); if (!$("#sheet-bg").hidden && $("#hr-box", sh)) renderHrBox(sh); });
+
+let diagSeq = 0;
+async function toggleDiag(btn) {
+  const lbl = btn.querySelector("span");
+  if (btn.dataset.playing) { diagSeq++; Coach.stopSpeak(); delete btn.dataset.playing; lbl.textContent = "Ouvir diagnóstico"; return; }
+  const my = ++diagSeq;
+  btn.dataset.playing = "1"; lbl.textContent = "Parar áudio";
+  await Coach.speak(current.diag.speech, { force: true });
+  if (my === diagSeq) { delete btn.dataset.playing; lbl.textContent = "Ouvir diagnóstico"; }
 }
 async function invite() {
   if (NATIVE) {
@@ -756,7 +959,8 @@ function openManual() {
       if (!(km > 0) || km > 400) return (err.textContent = "Informe a distância em km, por exemplo 5,2.");
       if (!(min > 0) || min > 1440) return (err.textContent = "Informe o tempo em horas e minutos.");
       if (day > today()) return (err.textContent = "A data não pode ser no futuro.");
-      const a = { id: uid(), type, distance_m: Math.round(km * 1000), duration_s: min * 60, elapsed_s: min * 60, elev_gain: 0, started_at: new Date(parseKey(day).getTime() + 12 * 3600e3).toISOString(), day, track: null, splits: null, synced: false };
+      const a = { id: uid(), type, distance_m: Math.round(km * 1000), duration_s: min * 60, elapsed_s: min * 60, elev_gain: 0, started_at: new Date(parseKey(day).getTime() + 12 * 3600e3).toISOString(), day, track: null, splits: null, synced: false, kcal_by: "ritmo" };
+      a.kcal = Math.round(Coach.metKcal(type, a.distance_m, a.duration_s));
       await idb.put(a); S.mine.push(a); closeSheet(); render(); toast(`Treino salvo · ${pts(a)} pts`);
       if (groupEnabled()) uploadAct(a).then((ok) => ok && loadGroup().then(render));
     });
@@ -794,9 +998,12 @@ document.addEventListener("click", async (e) => {
   else if (d === "gpx" && current) downloadGpx(current);
   else if (d === "del-ask") { b.textContent = "Toque de novo para excluir"; b.dataset.do = "del-yes"; b.style.color = "var(--tartan)"; }
   else if (d === "del-yes" && current) delAct(current);
+  else if (d === "diag-play" && current?.diag) toggleDiag(b);
 });
 $("#me-btn").onclick = () => openProfile(false);
 $("#rec-close").onclick = closeRec;
+$("#rec-voice").onclick = () => { Coach.coach.on = !Coach.coach.on; Coach.saveCoach(); paintVoiceBtn(); if (Coach.coach.on) Coach.speak("Voz ligada."); else Coach.stopSpeak(); toast(Coach.coach.on ? "Voz do treinador ligada" : "Voz do treinador desligada"); };
+$("#rec-hr").onclick = () => openHrSheet();
 $("#rec-center").onclick = () => { REC.follow = true; const p = REC.lastFix; if (p && recMap) recMap.easeTo({ center: [p[0], p[1]], zoom: 16.5, duration: 600 }); };
 $("#rec-3d").onclick = () => { if (!recMap) return; const flat = recMap.getPitch() < 10; recMap.easeTo({ pitch: flat ? 60 : 0, bearing: flat ? recMap.getBearing() : 0, duration: 600 }); $("#rec-3d").textContent = flat ? "3D" : "2D"; };
 $("#d-close").onclick = closeDetail;

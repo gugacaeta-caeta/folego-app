@@ -29,6 +29,15 @@ Esses celulares economizam bateria fechando apps em segundo plano. Para o treino
 - **Configurações → Apps → Fôlego → Bateria → Sem restrições** (ou "Não otimizar").
 - Na Xiaomi, também ative **Início automático** para o Fôlego.
 
+## Treinador por voz, frequência cardíaca e diagnóstico
+
+- **Voz do treinador:** liga e desliga no botão de alto-falante da tela de gravação. Em Ajustes (toque no seu nome) você escolhe estilo (Animado, Tranquilo, Técnico ou Sargento), voz, velocidade, tom, intervalo dos avisos (500 m a 5 km) e o que ele fala.
+- **Frequência cardíaca:** o celular sozinho não mede batimentos. Conecte uma cinta Bluetooth (Polar, Garmin, Coospo, Magene, Wahoo) ou um relógio que transmita a frequência (Amazfit e Mi Band com "Transmitir frequência cardíaca", Garmin com "Transmitir FC", Coros, Suunto) pelo botão de coração na gravação.
+- **Calorias:** com sensor e idade preenchida, o cálculo usa a frequência cardíaca. Sem sensor, usa peso, distância e velocidade.
+- **Diagnóstico:** ao salvar o treino, toque em **Ouvir diagnóstico**. Ele compara com seus treinos anteriores, analisa as parciais, o terreno, as zonas cardíacas e sugere a recuperação.
+
+Se você já tinha ligado a turma no Supabase, rode o `supabase.sql` de novo para criar as colunas de frequência e calorias.
+
 ## Ligar a turma (opcional)
 
 Sem isso o app funciona sozinho, guardando os treinos no celular. Para feed, aplausos e ranking com os amigos:

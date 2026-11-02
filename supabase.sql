@@ -17,6 +17,13 @@ create table if not exists public.activities (
   has_track   boolean default false,
   created_at  timestamptz default now()
 );
+-- Frequência cardíaca e calorias (versão 1.1)
+alter table public.activities add column if not exists avg_hr  integer;
+alter table public.activities add column if not exists max_hr  integer;
+alter table public.activities add column if not exists kcal    integer;
+alter table public.activities add column if not exists hr      jsonb;
+alter table public.activities add column if not exists zones   jsonb;
+
 create index if not exists activities_group_time on public.activities (group_code, started_at desc);
 
 create table if not exists public.kudos (
