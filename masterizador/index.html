@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masterizador do chags</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Layout: uma coluna de "módulos" de console de estúdio, empilhados — entrada → diagnóstico → ouvir → baixar → dicas */
+  --bg:#141519; --panel:#1c1e24; --line:#2b2e37; --ink:#ebe7df; --muted:#9b9da6;
+  --accent:#f2a541;            /* âmbar de VU */
+  --good:#5fcf98; --warn:#f2c94c; --bad:#ff6b5e;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+main{max-width:760px;margin:0 auto;padding:20px 16px 64px;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-direction:column;gap:6px;padding:8px 0 4px}
+.eyebrow{font-family:var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-size:.9rem;font-weight:600}
+h1{font-family:var(--display);font-weight:700;font-size:2.4rem;line-height:1;margin:0;text-wrap:balance;letter-spacing:.01em}
+header p{margin:0;color:var(--muted);max-width:62ch}
+section.mod{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:14px}
+h2{font-family:var(--display);font-weight:600;font-size:1.35rem;letter-spacing:.04em;text-transform:uppercase;margin:0;display:flex;align-items:center;gap:10px;text-wrap:balance}
+h2 .n{font-family:var(--mono);font-size:.8rem;color:var(--bg);background:var(--accent);border-radius:4px;padding:1px 6px;letter-spacing:0}
+.hint{color:var(--muted);font-size:.9rem;margin:0}
+label.file{display:flex;flex-direction:column;gap:6px;border:1px dashed #3d414c;border-radius:8px;padding:14px;cursor:pointer;transition:border-color .15s}
+label.file:hover,label.file:focus-within{border-color:var(--accent)}
+label.file strong{font-weight:600}
+label.file span.fname{font-family:var(--mono);font-size:.85rem;color:var(--accent);word-break:break-all}
+input[type=file]{font-family:var(--body);color:var(--muted);font-size:.85rem;max-width:100%}
+.targets{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.targets label{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:8px;padding:10px;cursor:pointer;background:#17181d}
+.targets input{position:absolute;opacity:0;pointer-events:none}
+.targets label:has(input:checked){border-color:var(--accent);background:#2a2418}
+.targets label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.targets b{font-family:var(--display);font-size:1.1rem;font-weight:600;letter-spacing:.03em}
+.targets small{font-family:var(--mono);color:var(--muted);font-size:.78rem}
+button{font-family:var(--display);font-weight:600;font-size:1.1rem;letter-spacing:.06em;text-transform:uppercase;border:0;border-radius:8px;padding:12px 18px;cursor:pointer;background:var(--accent);color:#1b1408}
+button.ghost{background:transparent;color:var(--ink);border:1px solid #3d414c}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.stages{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:.9rem}
+.stages li{display:flex;gap:8px;align-items:center;color:var(--muted)}
+.stages li::before{content:"";width:8px;height:8px;border-radius:50%;background:#3d414c;flex:none}
+.stages li.on{color:var(--ink)} .stages li.on::before{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.stages li.done::before{background:var(--good)}
+.err{color:var(--bad);font-size:.9rem;margin:0}
+.banner{font-size:.85rem;color:var(--muted);border-left:3px solid var(--accent);padding:2px 10px;margin:0}
+/* diagnóstico */
+.metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.metric{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden;background:#17181d}
+.metric::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--st,var(--line))}
+.metric .t{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)}
+.chip{font-family:var(--mono);font-size:.7rem;border-radius:99px;padding:1px 8px;border:1px solid currentColor;white-space:nowrap}
+.ok{--st:var(--good)} .ok .chip{color:var(--good)}
+.warn{--st:var(--warn)} .warn .chip{color:var(--warn)}
+.bad{--st:var(--bad)} .bad .chip{color:var(--bad)}
+.metric .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:1rem;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.metric .v .from{color:var(--muted);text-decoration:line-through;text-decoration-color:#555a66}
+.metric .v .arrow{color:var(--muted)}
+.metric .v .to{color:var(--ink);font-weight:500}
+/* bandas */
+.bands{display:flex;flex-direction:column;gap:9px}
+.band{display:grid;grid-template-columns:96px 1fr 104px;gap:10px;align-items:center;font-size:.85rem}
+.band .nm{color:var(--ink)} .band .nm small{display:block;color:var(--muted);font-family:var(--mono);font-size:.68rem}
+.track{position:relative;height:22px;background:#15161a;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
+.track .b1,.track .b2{position:absolute;left:0;height:8px;border-radius:2px}
+.track .b1{top:2px;background:#5b5f6b}
+.track .b2{bottom:2px;background:var(--accent)}
+.track .tg{position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--ink);opacity:.85}
+.band .vals{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:.78rem;color:var(--muted);text-align:right}
+.band .vals b{color:var(--ink);font-weight:500}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:8px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.adj{font-family:var(--mono);font-size:.8rem;color:var(--muted);margin:0;display:flex;flex-wrap:wrap;gap:6px}
+.adj span{border:1px solid var(--line);border-radius:4px;padding:2px 7px}
+/* player */
+.ab{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ab button{background:#17181d;color:var(--ink);border:1px solid var(--line)}
+.ab button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:#2a2418}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.time{font-family:var(--mono);font-size:.8rem;color:var(--muted);display:flex;justify-content:space-between}
+.check{display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--muted)}
+.check input{accent-color:var(--accent);width:18px;height:18px}
+/* dicas */
+ol.tips{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:10px;max-width:65ch}
+ol.tips li::marker{font-family:var(--mono);color:var(--accent)}
+ol.tips b{font-weight:600}
+footer{color:var(--muted);font-size:.8rem;max-width:65ch}
+@media (max-width:440px){
+  h1{font-size:2rem}
+  .targets{grid-template-columns:1fr}
+  .band{grid-template-columns:78px 1fr 88px;gap:8px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <span class="eyebrow">Estúdio · trap</span>
+  <h1>Masterizador do chags</h1>
+  <p>Mande a faixa exportada do FL Studio. O app mede, corrige o equilíbrio, deixa o grave em mono, ajusta o volume para o Spotify sem estourar e devolve o WAV pronto, com um relatório do que corrigir na próxima mix.</p>
+</header>
+
+<section class="mod" aria-labelledby="h-in">
+  <h2 id="h-in"><span class="n">1</span>Faixa</h2>
+  <label class="file" for="f-track">
+    <strong>Música para masterizar</strong>
+    <span class="hint">WAV exportado do FL é o ideal. MP3 também funciona.</span>
+    <input id="f-track" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg">
+  </label>
+  <label class="file" for="f-ref">
+    <strong>Referência (opcional)</strong>
+    <span class="hint">Um trap profissional que soe como ele quer. O equilíbrio de graves e agudos vai na direção dela. Sem referência, o app usa um perfil médio de trap.</span>
+    <input id="f-ref" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg">
+  </label>
+  <div>
+    <p class="hint" id="lbl-target" style="margin-bottom:8px">Volume final</p>
+    <div class="targets" role="radiogroup" aria-labelledby="lbl-target">
+      <label><input type="radio" name="target" id="t-alto" value="-9.5" checked><b>Alto</b><small>−9,5 LUFS · típico de trap</small></label>
+      <label><input type="radio" name="target" id="t-din" value="-11"><b>Dinâmico</b><small>−11 LUFS · mais impacto</small></label>
+      <label><input type="radio" name="target" id="t-spot" value="-14"><b>Spotify</b><small>−14 LUFS · sem limitar</small></label>
+    </div>
+  </div>
+  <div class="row">
+    <button id="go" type="button" disabled>Analisar e masterizar</button>
+    <span class="hint" id="go-hint">Escolha uma faixa primeiro.</span>
+  </div>
+  <ul class="stages" id="stages" hidden></ul>
+  <p class="err" id="err" hidden></p>
+</section>
+
+<section class="mod" aria-labelledby="h-diag">
+  <h2 id="h-diag"><span class="n">2</span>Diagnóstico</h2>
+  <p class="banner" id="diag-src"></p>
+  <div class="metrics" id="metrics"></div>
+  <div class="bands" id="bands"></div>
+  <div class="legend"><span><i style="background:#5b5f6b"></i>Antes</span><span><i style="background:var(--accent)"></i>Depois</span><span><i style="background:var(--ink);width:2px"></i>Alvo</span></div>
+  <p class="adj" id="adj"></p>
+</section>
+
+<section class="mod" aria-labelledby="h-ab">
+  <h2 id="h-ab"><span class="n">3</span>Ouvir antes × depois</h2>
+  <p class="hint" id="ab-hint">Disponível depois de masterizar uma faixa.</p>
+  <div class="ab">
+    <button type="button" id="ab-o" aria-pressed="false" disabled>Original</button>
+    <button type="button" id="ab-m" aria-pressed="true" disabled>Masterizada</button>
+  </div>
+  <div class="row">
+    <button type="button" id="play" class="ghost" disabled>▶ Tocar</button>
+    <label class="check" for="match"><input type="checkbox" id="match" checked>Mesmo volume na comparação</label>
+  </div>
+  <input type="range" id="seek" min="0" max="1" step="0.1" value="0" disabled aria-label="Posição">
+  <div class="time"><span id="t-pos">0:00</span><span id="t-dur">0:00</span></div>
+  <p class="hint">Com "mesmo volume" ligado, a diferença que você ouve é só de qualidade, não de volume (é assim que o Spotify toca).</p>
+</section>
+
+<section class="mod" aria-labelledby="h-dl">
+  <h2 id="h-dl"><span class="n">4</span>Baixar</h2>
+  <p class="hint">Um arquivo .zip com o WAV 24-bit/44,1 kHz (o formato que a distribuidora pede) e o relatório em texto.</p>
+  <div class="row"><button type="button" id="dl" disabled>Baixar master + relatório</button></div>
+  <p class="hint" id="dl-msg"></p>
+</section>
+
+<section class="mod" aria-labelledby="h-tips">
+  <h2 id="h-tips"><span class="n">5</span>Para a próxima mix no FL Studio</h2>
+  <ol class="tips" id="tips"></ol>
+</section>
+
+<footer>O processamento acontece no próprio aparelho: a música não é enviada para nenhum servidor. Os alvos de trap são médias aproximadas; para um lançamento importante, compare sempre com a referência e confie no ouvido.</footer>
+</main>
+
+<script id="dsp">
+const SR = 44100;
+const BANDS = [["Sub","20–60 Hz",20,60],["Grave","60–150",60,150],["Médio-grave","150–500",150,500],["Médio","500–2k",500,2000],["Presença","2–6k",2000,6000],["Brilho","6–12k",6000,12000],["Ar","12–20k",12000,20000]];
+const TRAP = [30,12,21,24,7,4.5,1.0];
+
+function bq(type,f0,Q,gDb){
+  const A=Math.pow(10,(gDb||0)/40), w=2*Math.PI*f0/SR, c=Math.cos(w), s=Math.sin(w), al=s/(2*Q);
+  let b0,b1,b2,a0,a1,a2;
+  if(type==='hp'){b0=(1+c)/2;b1=-(1+c);b2=(1+c)/2;a0=1+al;a1=-2*c;a2=1-al;}
+  else if(type==='lp'){b0=(1-c)/2;b1=1-c;b2=(1-c)/2;a0=1+al;a1=-2*c;a2=1-al;}
+  else if(type==='peak'){b0=1+al*A;b1=-2*c;b2=1-al*A;a0=1+al/A;a1=-2*c;a2=1-al/A;}
+  else { const q=2*Math.sqrt(A)*al; // high shelf
+    b0=A*((A+1)+(A-1)*c+q); b1=-2*A*((A-1)+(A+1)*c); b2=A*((A+1)+(A-1)*c-q);
+    a0=(A+1)-(A-1)*c+q; a1=2*((A-1)-(A+1)*c); a2=(A+1)-(A-1)*c-q; }
+  return [b0/a0,b1/a0,b2/a0,a1/a0,a2/a0];
+}
+function filt(x,co,out){
+  out=out||x; const b0=co[0],b1=co[1],b2=co[2],a1=co[3],a2=co[4]; let z1=0,z2=0;
+  for(let i=0,n=x.length;i<n;i++){const v=x[i], y=b0*v+z1; z1=b1*v-a1*y+z2; z2=b2*v-a2*y; out[i]=y;}
+  return out;
+}
+const BW4=[0.5411961,1.3065630]; // Butterworth 4ª ordem = 2 biquads
+function zeroPhaseHP(x,f){ for(const q of BW4) filt(x,bq('hp',f,q)); x.reverse(); for(const q of BW4) filt(x,bq('hp',f,q)); x.reverse(); return x; }
+
+let _tmp=null; function tmpBuf(n){ if(!_tmp||_tmp.length!==n) _tmp=new Float32Array(n); return _tmp; }
+
+function lufs(L,R){
+  const k1=bq('hs',1500,Math.SQRT1_2,4), k2=bq('hp',38,0.5), n=L.length, hop=Math.round(0.1*SR), nseg=Math.floor(n/hop);
+  const seg=new Float64Array(nseg), t=tmpBuf(n);
+  for(const ch of [L,R]){ filt(ch,k1,t); filt(t,k2,t);
+    for(let j=0;j<nseg;j++){let s=0; for(let i=j*hop,e=i+hop;i<e;i++) s+=t[i]*t[i]; seg[j]+=s;} }
+  const z=[]; for(let i=0;i+4<=nseg;i++) z.push((seg[i]+seg[i+1]+seg[i+2]+seg[i+3])/(4*hop));
+  const ld=v=>-0.691+10*Math.log10(v+1e-20);
+  const g1=z.filter(v=>ld(v)>-70); if(!g1.length) return -70;
+  const rel=ld(g1.reduce((a,b)=>a+b,0)/g1.length)-10;
+  const g2=g1.filter(v=>ld(v)>rel); return ld(g2.reduce((a,b)=>a+b,0)/g2.length);
+}
+
+function samplePeak(L,R){let p=0,c=0; for(let i=0;i<L.length;i++){const a=Math.abs(L[i]),b=Math.abs(R[i]); const m=a>b?a:b; if(m>p)p=m; if(a>=0.999)c++; if(b>=0.999)c++;} return {peak:p,clip:c};}
+
+const TP_T=16; const TP_H=[1,2,3].map(p=>{const h=new Float64Array(TP_T); for(let k=0;k<TP_T;k++){const kk=k-TP_T/2+1, t=p/4-kk; const sinc=t===0?1:Math.sin(Math.PI*t)/(Math.PI*t); const w=Math.abs(t)<TP_T/2?0.5*(1+Math.cos(Math.PI*t/(TP_T/2))):0; h[k]=sinc*w;} return h;});
+function truePeak(L,R,sp){
+  let tp=sp; const thr=sp*0.5;
+  for(const x of [L,R]){ const n=x.length;
+    for(let i=TP_T/2;i<n-TP_T/2;i++){
+      if(Math.abs(x[i])<thr && Math.abs(x[i+1])<thr) continue;
+      for(const h of TP_H){ let y=0; for(let k=0;k<TP_T;k++) y+=x[i+k-TP_T/2+1]*h[k]; const a=Math.abs(y); if(a>tp) tp=a; }
+    } }
+  return tp;
+}
+
+function fft(re,im){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){let bit=n>>1; for(;j&bit;bit>>=1) j^=bit; j^=bit; if(i<j){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t;}}
+  for(let len=2;len<=n;len<<=1){const ang=-2*Math.PI/len, wr=Math.cos(ang), wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){let cr=1,ci=0; for(let j=0;j<len/2;j++){const a=i+j,b=a+len/2; const xr=re[b]*cr-im[b]*ci, xi=re[b]*ci+im[b]*cr; re[b]=re[a]-xr; im[b]=im[a]-xi; re[a]+=xr; im[a]+=xi; const t=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=t;}}}
+}
+function bandPct(L,R){
+  const N=8192, hop=4096, win=new Float64Array(N), re=new Float64Array(N), im=new Float64Array(N), acc=new Float64Array(N/2+1);
+  for(let i=0;i<N;i++) win[i]=0.5-0.5*Math.cos(2*Math.PI*i/N);
+  for(let s=0;s+N<=L.length;s+=hop){ for(let i=0;i<N;i++){re[i]=(L[s+i]+R[s+i])*0.5*win[i]; im[i]=0;} fft(re,im); for(let k=0;k<=N/2;k++) acc[k]+=re[k]*re[k]+im[k]*im[k]; }
+  const e=BANDS.map(()=>0); let tot=0;
+  for(let k=0;k<=N/2;k++){const f=k*SR/N; if(f<20||f>20000) continue; tot+=acc[k]; for(let b=0;b<BANDS.length;b++) if(f>=BANDS[b][2]&&f<BANDS[b][3]){e[b]+=acc[k];break;}}
+  return e.map(v=>100*v/(tot||1));
+}
+function lowSide(L,R){
+  const n=L.length, t=tmpBuf(n); let em=0,es=0;
+  for(let i=0;i<n;i++) t[i]=(L[i]+R[i])/2; for(const q of BW4) filt(t,bq('lp',120,q)); for(let i=0;i<n;i++) em+=t[i]*t[i];
+  for(let i=0;i<n;i++) t[i]=(L[i]-R[i])/2; for(const q of BW4) filt(t,bq('lp',120,q)); for(let i=0;i<n;i++) es+=t[i]*t[i];
+  return 10*Math.log10((es+1e-20)/(em+1e-20));
+}
+function analyze(L,R,full){
+  const {peak,clip}=samplePeak(L,R);
+  const r={lufs:lufs(L,R), peak:20*Math.log10(peak+1e-12), clip, bands:bandPct(L,R), lowSide:lowSide(L,R), dur:L.length/SR};
+  if(full!==false) r.tp=20*Math.log10(truePeak(L,R,peak)+1e-12);
+  return r;
+}
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function decideEQ(before,targets){
+  const db=(a,b)=>10*Math.log10((a+1e-6)/(b+1e-6)), B=before.bands, T=targets;
+  return {
+    sub: +clamp(db(T[0],B[0])*0.5,-3,2).toFixed(1),
+    mud: +clamp(db(T[2],B[2])*2,-4,1.5).toFixed(1),
+    pres:+clamp(db(T[4],B[4])*0.8,-3,4).toFixed(1),
+    air: +clamp(db(T[5],B[5])*0.6,-2,3).toFixed(1)
+  };
+}
+
+function compress(L,R,thr,ratio,attMs,relMs){
+  const aA=Math.exp(-1/(attMs*1e-3*SR)), aR=Math.exp(-1/(relMs*1e-3*SR)), k=1-1/ratio; let env=0;
+  for(let i=0,n=L.length;i<n;i++){const a=Math.abs(L[i]),b=Math.abs(R[i]); const lv=20*Math.log10((a>b?a:b)+1e-9);
+    const tg=lv>thr?(lv-thr)*k:0; env=tg>env?aA*env+(1-aA)*tg:aR*env+(1-aR)*tg;
+    if(env>1e-4){const g=Math.pow(10,-env/20); L[i]*=g; R[i]*=g;}}
+}
+
+function processChain(L0,R0,eq){
+  const n=L0.length, L=new Float32Array(n), R=new Float32Array(n);
+  // grave em mono abaixo de 120 Hz (filtro de fase zero só no lado/side)
+  const S=new Float32Array(n); for(let i=0;i<n;i++){S[i]=(L0[i]-R0[i])/2;} zeroPhaseHP(S,120);
+  const g0=Math.pow(10,-6/20);
+  for(let i=0;i<n;i++){const m=(L0[i]+R0[i])/2; L[i]=(m+S[i])*g0; R[i]=(m-S[i])*g0;}
+  const chain=[bq('hp',25,Math.SQRT1_2)];
+  if(eq.sub) chain.push(bq('peak',50,0.9,eq.sub));
+  if(eq.mud) chain.push(bq('peak',300,0.8,eq.mud));
+  if(eq.pres) chain.push(bq('peak',3500,0.9,eq.pres));
+  if(eq.air) chain.push(bq('hs',10000,0.7,eq.air));
+  for(const c of chain){filt(L,c); filt(R,c);}
+  compress(L,R,-20,1.6,30,150);
+  return {L,R};
+}
+
+// limitador brickwall: mínimo à frente + média móvel => o ganho nunca deixa passar acima do teto
+let _lb=null;
+// envelope de pico real (4x): como o sistema é linear, calcula uma vez e escala pelo ganho
+function peakEnv(L,R){
+  const n=L.length, P=new Float32Array(n), H=TP_T/2;
+  for(let i=0;i<n;i++){const a=Math.abs(L[i]),b=Math.abs(R[i]); P[i]=a>b?a:b;}
+  for(const x of [L,R]) for(let i=H;i<n-H;i++){ let mx=0;
+    for(const h of TP_H){ let y=0; for(let k=0;k<TP_T;k++) y+=x[i+k-H+1]*h[k]; const a=Math.abs(y); if(a>mx) mx=a; }
+    if(mx>P[i]) P[i]=mx; if(mx>P[i+1]) P[i+1]=mx; }
+  return P;
+}
+function limit(L,R,P,gainDb,ceilDb,outL,outR){
+  const n=L.length, W=(Math.round(0.02*SR))|1, G=Math.pow(10,gainDb/20), C=Math.pow(10,ceilDb/20);
+  if(!_lb||_lb.g.length!==n) _lb={g:new Float32Array(n),m:new Float32Array(n),q:new Int32Array(n)};
+  const {g,m,q}=_lb;
+  for(let i=0;i<n;i++){const p=P[i]*G; g[i]=p>C?C/p:1;}
+  let h=0,t=0;
+  for(let i=n-1;i>=0;i--){ while(t>h&&g[q[t-1]]>=g[i]) t--; q[t++]=i; while(q[h]>i+W-1) h++; m[i]=g[q[h]]; }
+  let sum=0;
+  for(let i=0;i<n;i++){ sum+=m[i]; if(i>=W) sum-=m[i-W]; const gg=sum/Math.min(i+1,W); outL[i]=L[i]*G*gg; outR[i]=R[i]*G*gg; }
+}
+async function master(y,target,onStep){
+  const n=y.L.length, oL=new Float32Array(n), oR=new Float32Array(n), P=peakEnv(y.L,y.R);
+  let ceil=-1.2, best=0;
+  for(let pass=0;pass<3;pass++){
+    let lo=-24,hi=24;
+    for(let it=0;it<10;it++){ const g=(lo+hi)/2; limit(y.L,y.R,P,g,ceil,oL,oR); const l=lufs(oL,oR); if(l<target) lo=g; else hi=g; if(onStep) await onStep(); }
+    best=lo; limit(y.L,y.R,P,best,ceil,oL,oR);
+    const sp=samplePeak(oL,oR).peak, tp=20*Math.log10(truePeak(oL,oR,sp)+1e-12);
+    if(tp<=-1.0) break; ceil-= (tp+1.0)+0.05;
+  }
+  return {L:oL,R:oR,gain:best,ceil};
+}
+
+function wav24(L,R){
+  const n=L.length, data=n*6, buf=new ArrayBuffer(44+data), v=new DataView(buf), u=new Uint8Array(buf);
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)u[o+i]=s.charCodeAt(i);};
+  w(0,'RIFF'); v.setUint32(4,36+data,true); w(8,'WAVE'); w(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,2,true);
+  v.setUint32(24,SR,true); v.setUint32(28,SR*6,true); v.setUint16(32,6,true); v.setUint16(34,24,true); w(36,'data'); v.setUint32(40,data,true);
+  let o=44;
+  for(let i=0;i<n;i++) for(const x of [L[i],R[i]]){ let s=Math.round(Math.max(-1,Math.min(1,x))*8388607); if(s<0) s+=16777216; u[o++]=s&255; u[o++]=(s>>8)&255; u[o++]=(s>>16)&255; }
+  return u;
+}
+const CRC=(()=>{const t=new Uint32Array(256); for(let i=0;i<256;i++){let c=i; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[i]=c>>>0;} return t;})();
+function crc32(u){let c=0xFFFFFFFF; for(let i=0;i<u.length;i++) c=CRC[(c^u[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0;}
+function zip(files){ // método "store" (sem compressão)
+  const enc=new TextEncoder(), parts=[], cen=[]; let off=0;
+  for(const f of files){
+    const name=enc.encode(f.name), crc=crc32(f.data), sz=f.data.length;
+    const lh=new DataView(new ArrayBuffer(30)); lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint32(14,crc,true); lh.setUint32(18,sz,true); lh.setUint32(22,sz,true); lh.setUint16(26,name.length,true);
+    parts.push(new Uint8Array(lh.buffer),name,f.data);
+    const ch=new DataView(new ArrayBuffer(46)); ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint32(16,crc,true); ch.setUint32(20,sz,true); ch.setUint32(24,sz,true); ch.setUint16(28,name.length,true); ch.setUint32(42,off,true);
+    cen.push(new Uint8Array(ch.buffer),name); off+=30+name.length+sz;
+  }
+  const cs=cen.reduce((a,b)=>a+b.length,0), end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true); end.setUint32(12,cs,true); end.setUint32(16,off,true);
+  return new Blob([...parts,...cen,new Uint8Array(end.buffer)]);
+}
+if(typeof module!=='undefined') module.exports={SR,BANDS,TRAP,analyze,decideEQ,processChain,master,lufs,truePeak,samplePeak,wav24,zip,crc32};
+</script>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(v,d=1)=>(v>=0&&v!==0?'':'')+v.toFixed(d).replace('.',',').replace('-','−');
+const sgn=(v,d=1)=>(v>0?'+':'')+fmt(v,d);
+const mmss=s=>{s=Math.max(0,Math.floor(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
+const tick=()=>new Promise(r=>setTimeout(r,0));
+
+const EXAMPLE={name:'AUD-20260913-WA0001.mp3', example:true, target:-9.5, refName:null, targets:TRAP,
+  before:{lufs:-9.1,tp:0.9,peak:0.0,clip:226,bands:[33.8,13.6,27.2,19.8,3.1,2.1,0.4],lowSide:-10.3,dur:165},
+  after:{lufs:-9.5,tp:-1.4,peak:-1.5,clip:0,bands:[31.0,11.3,24.6,24.3,5.3,2.9,0.5],lowSide:-26.6,dur:165},
+  eq:{sub:-0.3,mud:-2.5,pres:2.5,air:1.5}};
+
+let state={track:null,ref:null,result:null,orig:null,mast:null,downloads:null};
+
+/* ---------- render ---------- */
+function stBand(actual,target){const d=Math.abs(10*Math.log10((actual+1e-6)/(target+1e-6))); return d<1?'ok':d<2.5?'warn':'bad';}
+function metricHTML(title,cls,chip,from,to){
+  return `<div class="metric ${cls}"><div class="t"><span>${title}</span><span class="chip">${chip}</span></div><div class="v">${from!=null?`<span class="from">${from}</span><span class="arrow">→</span>`:''}<span class="to">${to}</span></div></div>`;
+}
+const CHIP={ok:'ok',warn:'atenção',bad:'problema'};
+function render(r){
+  const b=r.before,a=r.after,T=r.targets;
+  $('diag-src').textContent = r.example
+    ? `Exemplo: a última faixa analisada (${r.name}). Mande uma faixa no passo 1 para ver a dela.`
+    : `${r.name} · ${mmss(b.dur)} · alvo ${fmt(r.target)} LUFS · ${r.refName?'referência: '+r.refName:'perfil médio de trap'}`;
+  const m=[];
+  const lst=Math.abs(a.lufs-r.target)<=0.6?'ok':'warn';
+  m.push(metricHTML('Volume (LUFS)',lst,CHIP[lst],fmt(b.lufs),fmt(a.lufs)));
+  const tps=a.tp<=-1?'ok':a.tp<=0?'warn':'bad';
+  m.push(metricHTML('Pico real (dBTP)',tps,b.tp>0?'estourava':CHIP[tps],sgn(b.tp),sgn(a.tp)));
+  const cs=a.clip===0?'ok':'bad';
+  m.push(metricHTML('Amostras clipando',cs,b.clip>0&&a.clip===0?'corrigido':CHIP[cs],String(b.clip),String(a.clip)));
+  const ls=a.lowSide<-20?'ok':a.lowSide<-12?'warn':'bad';
+  m.push(metricHTML('Grave em mono (lado/meio <120 Hz)',ls,b.lowSide>=-20&&a.lowSide<-20?'corrigido':CHIP[ls],fmt(b.lowSide)+' dB',fmt(a.lowSide)+' dB'));
+  for(const [i,lab] of [[2,'Médio-grave (embolado)'],[4,'Presença (voz e hats)']]){
+    const s=stBand(a.bands[i],T[i]); m.push(metricHTML(lab,s,CHIP[s],fmt(b.bands[i])+'%',fmt(a.bands[i])+'%'));
+  }
+  $('metrics').innerHTML=m.join('');
+  const max=Math.max(40,...b.bands,...a.bands,...T)*1.05;
+  $('bands').innerHTML=BANDS.map((bd,i)=>`<div class="band"><span class="nm">${bd[0]}<small>${bd[1]}</small></span><div class="track"><span class="b1" style="width:${b.bands[i]/max*100}%"></span><span class="b2" style="width:${a.bands[i]/max*100}%"></span><span class="tg" style="left:${T[i]/max*100}%"></span></div><span class="vals">${fmt(b.bands[i])} → <b>${fmt(a.bands[i])}%</b></span></div>`).join('');
+  const e=r.eq, adj=[`grave mono < 120 Hz`,`sub 50 Hz ${sgn(e.sub)} dB`,`300 Hz ${sgn(e.mud)} dB`,`3,5 kHz ${sgn(e.pres)} dB`,`agudos 10 kHz ${sgn(e.air)} dB`,`compressão leve 1,6:1`,`limitador, teto −1 dBTP`];
+  $('adj').innerHTML='Aplicado: '+adj.map(x=>`<span>${x}</span>`).join('');
+  $('tips').innerHTML=tips(r).map(t=>`<li>${t}</li>`).join('');
+}
+function tips(r){
+  const b=r.before,T=r.targets,t=[];
+  if(b.clip>0||b.tp>0) t.push(`<b>O master está estourando</b> (${b.clip} amostras clipando, pico ${sgn(b.tp)} dBTP). No mixer do FL, baixe o fader do Master até os picos ficarem perto de −6 dB e tire o limitador ou clipper do master antes de exportar. A masterização sobe o volume depois, sem distorcer.`);
+  if(10*Math.log10(b.bands[2]/T[2])>1) t.push(`<b>Médio-grave carregado</b> (${fmt(b.bands[2])}% entre 150 e 500 Hz; alvo perto de ${fmt(T[2],0)}%). Com o Fruity Parametric EQ 2 nos synths, pads e na voz, corte 2 a 4 dB entre 200 e 400 Hz. Deixe essa região principalmente para o 808.`);
+  if(10*Math.log10(T[4]/b.bands[4])>1) t.push(`<b>Falta presença</b> (${fmt(b.bands[4])}% entre 2 e 6 kHz). Na voz, realce 2 a 4 dB perto de 3 a 5 kHz e confira se os hi-hats não estão baixos demais.`);
+  if(10*Math.log10(T[4]/b.bands[4])<-1.5) t.push(`<b>Agudos médios fortes demais</b> (${fmt(b.bands[4])}% entre 2 e 6 kHz). Hats ou voz podem cansar o ouvido: baixe 1 a 3 dB em 3 a 5 kHz.`);
+  if(10*Math.log10(T[5]/b.bands[5])>1) t.push(`<b>Pouco brilho.</b> Um shelf suave de +1,5 dB acima de 10 kHz na voz ou no grupo de instrumentos abre o som.`);
+  if(b.lowSide>-20) t.push(`<b>O grave está abrindo no estéreo</b> (${fmt(b.lowSide)} dB; o ideal é abaixo de −20). Deixe 808 e kick com pan no centro e sem chorus ou stereo widener. Em celular e caixinha, grave estéreo perde força.`);
+  if(10*Math.log10(b.bands[0]/T[0])>1.5) t.push(`<b>Sub forte em relação ao resto.</b> Baixe o 808 1 a 2 dB ou faça sidechain do kick no 808 (Fruity Limiter em modo compressor com sidechain do canal do kick).`);
+  if(b.lufs<-16) t.push(`<b>A mix chegou bem baixa</b> (${fmt(b.lufs)} LUFS). Tudo bem: a masterização sobe o volume. Só evite exportar com o master abaixo de −12 dB de pico.`);
+  t.push(`<b>Exportação:</b> no FL, File › Export › Wave file, 24-bit, 44.100 Hz, sem "normalize". Mande esse WAV para cá, não o áudio do WhatsApp, que perde qualidade.`);
+  return t;
+}
+
+/* ---------- arquivos ---------- */
+async function decode(file){
+  const buf=await file.arrayBuffer();
+  const ctx=new OfflineAudioContext(2,SR,SR);
+  const ab=await new Promise((res,rej)=>{const p=ctx.decodeAudioData(buf,res,rej); if(p&&p.then) p.then(res,rej);});
+  const L=new Float32Array(ab.getChannelData(0)); const R=ab.numberOfChannels>1?new Float32Array(ab.getChannelData(1)):new Float32Array(L);
+  return {L,R};
+}
+function baseName(n){return n.replace(/\.[^.]+$/,'').replace(/[^\w\-]+/g,'_').slice(0,60)||'faixa';}
+
+$('f-track').addEventListener('change',e=>{state.track=e.target.files[0]||null; $('go').disabled=!state.track; $('go-hint').textContent=state.track?state.track.name:'Escolha uma faixa primeiro.';});
+$('f-ref').addEventListener('change',e=>{state.ref=e.target.files[0]||null;});
+
+const STAGES=['Lendo o arquivo','Medindo a faixa original','Lendo a referência','Corrigindo equilíbrio e grave','Ajustando volume e picos','Conferindo o resultado'];
+function setStage(i){ $('stages').hidden=false; $('stages').innerHTML=STAGES.map((s,k)=>`<li class="${k<i?'done':k===i?'on':''}">${s}${k===2&&!state.ref?' (sem referência)':''}</li>`).join(''); }
+
+$('go').addEventListener('click',async()=>{
+  $('err').hidden=true; $('go').disabled=true; stopPlay();
+  try{
+    const target=parseFloat(document.querySelector('input[name=target]:checked').value);
+    setStage(0); await tick();
+    const o=await decode(state.track);
+    setStage(1); await tick();
+    const before=analyze(o.L,o.R);
+    setStage(2); await tick();
+    let targets=TRAP, refName=null;
+    if(state.ref){ const rf=await decode(state.ref); const rb=analyze(rf.L,rf.R,false); targets=rb.bands; refName=state.ref.name; }
+    setStage(3); await tick();
+    const eq=decideEQ(before,targets);
+    const y=processChain(o.L,o.R,eq);
+    setStage(4); await tick();
+    const mres=await master(y,target,tick);
+    setStage(5); await tick();
+    const after=analyze(mres.L,mres.R);
+    setStage(6);
+    state.orig=o; state.mast={L:mres.L,R:mres.R};
+    state.result={name:state.track.name,target,refName,targets,before,after,eq};
+    render(state.result); enablePlayer(); enableDownload();
+    $('h-diag').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+  }catch(err){
+    $('err').hidden=false; $('err').textContent='Não consegui processar esse arquivo ('+(err&&err.message||err)+'). Tente exportar de novo como WAV ou MP3 e envie outra vez.';
+  }finally{ $('go').disabled=!state.track; }
+});
+
+/* ---------- A/B ---------- */
+let ac=null, bufs=null, src=null, gainN=null, playing=false, which='m', startAt=0, offset=0, raf=0;
+function enablePlayer(){
+  bufs=null; offset=0; ['ab-o','ab-m','play','seek'].forEach(id=>$(id).disabled=false);
+  $('seek').max=state.orig.L.length/SR; $('seek').value=0; $('t-dur').textContent=mmss(state.orig.L.length/SR); $('t-pos').textContent='0:00';
+  $('ab-hint').textContent='Troque entre as duas versões enquanto toca: a música continua do mesmo ponto.';
+}
+function ensureAudio(){
+  if(!ac) ac=new (window.AudioContext||window.webkitAudioContext)();
+  if(!bufs){ const mk=d=>{const b=ac.createBuffer(2,d.L.length,SR); b.copyToChannel(d.L,0); b.copyToChannel(d.R,1); return b;}; bufs={o:mk(state.orig),m:mk(state.mast)}; }
+}
+function gainFor(w){ if(!$('match').checked) return 1; const lo=state.result.before.lufs, lm=state.result.after.lufs; const d=w==='o'?lm-lo:lo-lm; return Math.min(1,Math.pow(10,d/20)); }
+function pos(){return playing?offset+(ac.currentTime-startAt):offset;}
+function startPlay(at){
+  ensureAudio(); if(src){try{src.stop()}catch(e){} src.disconnect();}
+  src=ac.createBufferSource(); src.buffer=bufs[which]; gainN=ac.createGain(); gainN.gain.value=gainFor(which);
+  src.connect(gainN).connect(ac.destination); offset=Math.min(at,src.buffer.duration-0.05); startAt=ac.currentTime; src.start(0,offset); playing=true;
+  src.onended=()=>{ if(playing && pos()>=src.buffer.duration-0.1){ playing=false; offset=0; $('play').textContent='▶ Tocar'; } };
+  $('play').textContent='❚❚ Pausar'; cancelAnimationFrame(raf); loop();
+}
+function stopPlay(){ if(playing){offset=pos(); playing=false; try{src.stop()}catch(e){}} $('play').textContent='▶ Tocar'; }
+function loop(){ if(!playing) return; const p=pos(); $('seek').value=p; $('t-pos').textContent=mmss(p); raf=requestAnimationFrame(loop); }
+$('play').addEventListener('click',async()=>{ try{ ensureAudio(); if(ac.state==='suspended') await ac.resume(); playing?stopPlay():startPlay(offset);}catch(e){$('ab-hint').textContent='O navegador bloqueou o áudio. Toque de novo no botão.';} });
+function pick(w){ which=w; $('ab-o').setAttribute('aria-pressed',w==='o'); $('ab-m').setAttribute('aria-pressed',w==='m'); if(playing) startPlay(pos()); }
+$('ab-o').addEventListener('click',()=>pick('o')); $('ab-m').addEventListener('click',()=>pick('m'));
+$('seek').addEventListener('input',e=>{const v=+e.target.value; $('t-pos').textContent=mmss(v); if(playing) startPlay(v); else offset=v;});
+$('match').addEventListener('change',()=>{ if(gainN) gainN.gain.value=gainFor(which); });
+
+/* ---------- download ---------- */
+function report(r){
+  const b=r.before,a=r.after,L=[];
+  L.push('MASTERIZADOR DO CHAGS — RELATÓRIO','Faixa: '+r.name,'Data: '+new Date().toLocaleString('pt-BR'),'Alvo de volume: '+fmt(r.target)+' LUFS',
+    'Referência: '+(r.refName||'perfil médio de trap'),'','MEDIDAS               ANTES      DEPOIS');
+  const row=(n,x,y)=>L.push(n.padEnd(22)+String(x).padEnd(11)+y);
+  row('Volume (LUFS)',fmt(b.lufs),fmt(a.lufs)); row('Pico real (dBTP)',sgn(b.tp),sgn(a.tp)); row('Amostras clipando',b.clip,a.clip);
+  row('Grave lado/meio (dB)',fmt(b.lowSide),fmt(a.lowSide));
+  BANDS.forEach((bd,i)=>row(bd[0]+' '+bd[1],fmt(b.bands[i])+'%',fmt(a.bands[i])+'%  (alvo '+fmt(r.targets[i])+'%)'));
+  L.push('','AJUSTES APLICADOS','- grave em mono abaixo de 120 Hz','- sub 50 Hz '+sgn(r.eq.sub)+' dB; 300 Hz '+sgn(r.eq.mud)+' dB; 3,5 kHz '+sgn(r.eq.pres)+' dB; agudos 10 kHz '+sgn(r.eq.air)+' dB','- compressão leve 1,6:1; limitador com teto -1 dBTP','','PARA A PRÓXIMA MIX NO FL STUDIO');
+  tips(r).forEach((t,i)=>L.push((i+1)+'. '+t.replace(/<[^>]+>/g,'')));
+  return L.join('\r\n');
+}
+function enableDownload(){ $('dl').disabled=false; $('dl-msg').textContent=''; }
+function saveLocal(blob,filename){ // fora do Claude: download normal do navegador
+  const url=URL.createObjectURL(blob), a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+$('dl').addEventListener('click',async()=>{
+  if(!state.result) return;
+  $('dl').disabled=true; $('dl-msg').textContent='Preparando o arquivo…'; await tick();
+  try{
+    const nm=baseName(state.result.name), enc=new TextEncoder();
+    const blob=zip([{name:nm+'_master.wav',data:wav24(state.mast.L,state.mast.R)},{name:nm+'_relatorio.txt',data:enc.encode(report(state.result))}]);
+    if(state.downloads) await state.downloads.save({filename:nm+'_master.zip',data:blob});
+    else saveLocal(blob,nm+'_master.zip');
+    $('dl-msg').textContent='Pronto. Abra o .zip e envie o WAV para a distribuidora.';
+  }catch(e){
+    const c=e&&e.code; $('dl-msg').textContent= c==='declined'?'Download cancelado.' : c==='rate_limited'?'Espere alguns segundos e tente de novo.' : 'Não foi possível baixar aqui ('+(c||e)+').';
+  }finally{ $('dl').disabled=false; }
+});
+
+/* ---------- início ---------- */
+render(EXAMPLE);
+(async()=>{ try{ if(window.claude&&window.claude.use){ state.downloads=await window.claude.use('downloads'); } }catch(e){} if(state.result) enableDownload(); })();
+</script>
+</body>
+</html>
