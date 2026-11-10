@@ -1,4 +1,4 @@
-name: Gerar APK do Fôlego
+name: Gerar apps do Fôlego
 
 on:
   push:
@@ -69,6 +69,58 @@ jobs:
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: Fôlego 1.0.${{ github.run_number }}
-          body: "Baixe o arquivo **Folego.apk** abaixo no celular Android e toque para instalar."
+          body: "**Android:** baixe o arquivo **Folego.apk** no celular e toque para instalar.\n\n**iPhone:** o arquivo **Folego-iOS.ipa** é a versão de teste sem assinatura da Apple (veja o LEIA-ME para instalar)."
           files: Folego.apk
           make_latest: true
+
+  ios:
+    needs: android
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Copiar o app para o projeto iOS
+        run: npx cap sync ios
+
+      - name: Compilar app iOS (sem assinatura)
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          xcodebuild -version | tee ../../ios-build.log
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} MARKETING_VERSION=1.0.${{ github.run_number }} \
+            build 2>&1 | tee -a ../../ios-build.log | grep -E "error:|warning: .*deprecated|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Release-iphoneos/App.app
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry ../../Folego-iOS.ipa Payload
+
+      - name: Guardar log do erro no ramo build-logs
+        if: failure()
+        run: |
+          git config user.name "folego-bot"
+          git config user.email "folego-bot@users.noreply.github.com"
+          grep -E "error:|failed|FAILED" -A3 ios-build.log | head -n 150 > /tmp/ios.log || true
+          tail -n 200 ios-build.log >> /tmp/ios.log || echo "sem log" > /tmp/ios.log
+          git switch --orphan ios-logs-tmp
+          git rm -rf --quiet . || true
+          cp /tmp/ios.log ./ultimo-erro-ios.log
+          git add ultimo-erro-ios.log
+          git commit -m "Log iOS da execução ${{ github.run_number }}"
+          git push -f origin HEAD:build-logs-ios
+
+      - name: Anexar versão iOS ao download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          files: Folego-iOS.ipa

@@ -238,3 +238,25 @@ h2 button{font-family:var(--f-body);text-transform:none;letter-spacing:0;font-si
 .sh-prev canvas{display:block;max-width:100%;max-height:44vh;width:auto;height:auto;border-radius:8px;box-shadow:0 8px 22px -10px rgba(0,0,0,.5)}
 #sh-go:disabled{opacity:.6}
 .lead.center{text-align:center}
+
+/* ---- fotos do treino ---- */
+.photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ph{aspect-ratio:1;max-width:100%;border:0;padding:0;border-radius:12px;overflow:hidden;background:var(--soft)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph.add{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1.5px dashed var(--line);background:var(--surface);color:var(--muted);font-size:12.5px;font-weight:600}
+.ph.add svg{width:26px;height:26px;color:var(--tartan)}
+.act-photos{grid-column:2;display:flex;gap:6px;margin-top:8px;align-items:center}
+.act-photos img{width:52px;height:52px;border-radius:8px;object-fit:cover;display:block}
+.act-photos span{font-size:12px;color:var(--muted);font-weight:600}
+.ph-row{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;margin-bottom:10px}
+.ph-pick{flex:none;width:64px;height:64px;padding:0;border:3px solid transparent;border-radius:12px;overflow:hidden;background:none}
+.ph-pick img{width:100%;height:100%;object-fit:cover;display:block}
+.ph-pick[aria-pressed="true"]{border-color:var(--tartan)}
+.add-ph{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.add-ph .btn2{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 6px;font-size:13px}
+.add-ph svg{width:26px;height:26px;color:var(--tartan)}
+.lightbox{position:fixed;inset:0;z-index:70;background:rgba(8,9,8,.94);display:flex;align-items:center;justify-content:center;padding:calc(64px + var(--sat)) 0 calc(96px + var(--sab))}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+.lightbox .map-btn.close{z-index:2}
+.lb-bar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:12px var(--gut-r) calc(14px + var(--sab)) var(--gut-l)}
+.lb-bar .btn2{flex:1}

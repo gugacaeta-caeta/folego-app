@@ -4,8 +4,11 @@ import { Capacitor, registerPlugin } from "./vendor/capacitor/core.mjs";
 import * as Coach from "./coach.js";
 import * as ShareCard from "./share.js";
 
-// Recursos nativos do Android (no navegador comum o app cai para as APIs da web)
+// Recursos nativos do Android e do iPhone (no navegador comum o app cai para as APIs da web)
 const NATIVE = Capacitor.isNativePlatform();
+const IOS = Capacitor.getPlatform() === "ios";
+// Links de download para os amigos (Android e, se houver, iPhone)
+const dlText = () => [CFG.downloadUrl && `Android: ${CFG.downloadUrl}`, CFG.iosUrl && `iPhone: ${CFG.iosUrl}`].filter(Boolean).join(" · ");
 const BG = registerPlugin("BackgroundGeolocation");
 const Notif = registerPlugin("LocalNotifications");
 const Haptics = registerPlugin("Haptics");
@@ -95,15 +98,22 @@ function simplify(pts, tol = 2.5) {
 const idb = (() => {
   let dbp;
   const open = () => dbp || (dbp = new Promise((res, rej) => {
-    const r = indexedDB.open("folego", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("acts", { keyPath: "id" });
+    const r = indexedDB.open("folego", 2);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains("acts")) db.createObjectStore("acts", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("photos")) db.createObjectStore("photos", { keyPath: "id" }); // fotos do treino (JPEG)
+    };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   }));
-  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("acts", mode); const st = t.objectStore("acts"); const out = fn(st); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error); }); };
+  const tx = async (store, mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction(store, mode); const st = t.objectStore(store); const out = fn(st); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error); }); };
   return {
-    all: () => tx("readonly", (s) => s.getAll()),
-    put: (a) => tx("readwrite", (s) => s.put(a)),
-    del: (id) => tx("readwrite", (s) => s.delete(id)),
+    all: () => tx("acts", "readonly", (s) => s.getAll()),
+    put: (a) => tx("acts", "readwrite", (s) => s.put(a)),
+    del: (id) => tx("acts", "readwrite", (s) => s.delete(id)),
+    putPhoto: (p) => tx("photos", "readwrite", (s) => s.put(p)),
+    getPhoto: (id) => tx("photos", "readonly", (s) => s.get(id)),
+    delPhoto: (id) => tx("photos", "readwrite", (s) => s.delete(id)),
   };
 })();
 
@@ -265,6 +275,7 @@ function listHtml(arr, emptyMsg, social = false) {
       <div class="act-head"><b>${esc(name)}</b><small>${relDate(a.day)}</small></div>
       <div class="act-title"><span class="chip ${t.cls}">${t.label}</span>${hasTrack ? '<span class="gps-tag">rota GPS</span>' : '<span class="gps-tag">lançado à mão</span>'}</div>
       <div class="nums"><div><b>${fmtKm(a.distance_m)}</b>km</div><div><b>${fmtTime(a.duration_s)}</b>tempo</div><div><b>${perf(a)}</b>${a.type === "bike" ? "média" : "ritmo"}</div><div><b>${pts(a)}</b>pts</div>${a.kcal ? `<div><b>${Math.round(a.kcal)}</b>kcal</div>` : ""}${a.avg_hr ? `<div><b>${a.avg_hr}</b>bpm méd.</div>` : ""}</div>
+      ${(a.photos || []).length ? `<div class="act-photos">${a.photos.slice(0, 4).map((ph) => `<img src="${ph.thumb}" alt="Foto do treino" loading="lazy">`).join("")}${a.photos.length > 4 ? `<span>+${a.photos.length - 4}</span>` : ""}</div>` : ""}
       <div class="act-foot">
         ${social && !own ? `<button class="kudo ${mineK ? "on" : ""}" data-do="kudo" data-id="${a.id}">${mineK ? "Aplaudido" : "Aplaudir"}${kd.length ? " · " + kd.length : ""}</button>` : kd.length ? `<span class="gps-tag">${kd.length} ${kd.length > 1 ? "aplausos" : "aplauso"}</span>` : ""}
         <button class="open" data-do="detail" data-id="${a.id}">${hasTrack ? "Ver em 3D" : "Detalhes"} →</button>
@@ -274,7 +285,7 @@ function listHtml(arr, emptyMsg, social = false) {
 }
 
 function inviteLink() {
-  if (NATIVE) return CFG.downloadUrl || "";
+  if (NATIVE) return dlText();
   const u = new URL(location.href); u.search = "?turma=" + encodeURIComponent(S.group); u.hash = ""; return u.toString(); }
 
 function viewTurma() {
@@ -640,6 +651,7 @@ async function openDetail(id) {
       <div class="stat"><b>${kcalOf(a)}</b><span>kcal${a.kcal_by === "fc" ? " (pela FC)" : " estimadas"}</span></div>
       ${a.avg_hr ? `<div class="stat"><b>${a.avg_hr} <small>bpm</small></b><span>FC média</span></div><div class="stat"><b>${a.max_hr} <small>bpm</small></b><span>FC máxima</span></div>` : ""}
     </div>
+    ${own ? `<h2>Fotos do treino</h2><div class="photos" id="d-photos">${photosHtml(a)}</div>` : ""}
     ${own ? `<h2>Diagnóstico do treino</h2>
     <button class="cta red diag-play" data-do="diag-play" id="diag-play"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M7 5l12 7-12 7z" class="fill"/></svg><span>Ouvir diagnóstico</span></button>
     <div class="diag" id="diag"></div>` : ""}
@@ -774,7 +786,7 @@ async function downloadGpx(a) {
 }
 function shareTextOf(a) {
   const verb = { run: "Corri", walk: "Caminhei", bike: "Pedalei" }[a.type];
-  const url = NATIVE ? CFG.downloadUrl || "" : S.group ? inviteLink() : location.origin + location.pathname;
+  const url = NATIVE ? dlText() : S.group ? inviteLink() : location.origin + location.pathname;
   return `${verb} ${fmtKm(a.distance_m)} km em ${fmtTime(a.duration_s)} (${perf(a)}) no Fôlego.` + (S.group ? ` Turma: ${S.group}.` : "") + (url ? ` Baixe o app: ${url}` : "");
 }
 async function shareTextOnly(a) {
@@ -786,14 +798,31 @@ async function shareTextOnly(a) {
 
 /* ============ compartilhar com foto ============ */
 const SH = { act: null, img: null, src: "none", fmt: "story", tpl: "classico", route: true };
-async function openShare(a, afterSave = false) {
+function markShSrc(sh) {
+  sh.querySelectorAll("[data-src]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.src === SH.src));
+  sh.querySelectorAll("[data-ph]").forEach((x) => x.setAttribute("aria-pressed", "ph:" + x.dataset.ph === SH.src));
+}
+function renderShSaved(sh) {
+  const box = $("#sh-saved", sh), a = SH.act; if (!box) return;
+  const list = a.photos || [];
+  box.innerHTML = list.length ? `<div class="lbl">Fotos deste treino</div><div class="ph-row">${list.map((ph) => `<button type="button" class="ph-pick" data-ph="${ph.id}" aria-pressed="false" aria-label="Usar esta foto"><img src="${ph.thumb}" alt=""></button>`).join("")}</div>` : "";
+  box.querySelectorAll("[data-ph]").forEach((b) => b.onclick = async () => {
+    const url = await photoURL(b.dataset.ph); if (!url) return;
+    SH.img = await ShareCard.loadImg(url); SH.src = "ph:" + b.dataset.ph; markShSrc(sh); drawShare();
+  });
+  markShSrc(sh);
+}
+async function openShare(a, afterSave = false, photoId = null) {
   Object.assign(SH, { act: a, img: null, src: "none" });
+  if (!photoId && (a.photos || []).length && !afterSave) photoId = a.photos[a.photos.length - 1].id;
+  if (photoId) { const url = await photoURL(photoId); if (url) { try { SH.img = await ShareCard.loadImg(url); SH.src = "ph:" + photoId; } catch {} } }
   const hasTrack = (a.track || []).length > 1;
   const chip = (attr, v, cur, label) => `<button type="button" class="opt" data-${attr}="${v}" aria-pressed="${cur === v}">${label}</button>`;
   openSheet(`<h3>${afterSave ? "Treino salvo! Bora mostrar?" : "Compartilhar treino"}</h3>
     ${afterSave ? '<p class="lead">Tire uma foto do lugar ou uma selfie e mande o treino para o WhatsApp, Instagram ou onde quiser.</p>' : ""}
     <div class="sh-prev"><canvas id="sh-canvas" aria-label="Prévia da imagem do treino"></canvas></div>
-    <div class="lbl">Foto</div>
+    <div id="sh-saved"></div>
+    <div class="lbl">${(a.photos || []).length ? "Nova foto" : "Foto"}</div>
     <div class="opts" id="sh-src">
       ${chip("src", "camera", SH.src, "Tirar foto")}${chip("src", "selfie", SH.src, "Selfie")}${chip("src", "gallery", SH.src, "Galeria")}
       ${hasTrack && dMap && current && current.id === a.id ? chip("src", "map", SH.src, "Mapa 3D") : ""}${chip("src", "none", SH.src, "Sem foto")}
@@ -816,9 +845,14 @@ async function openShare(a, afterSave = false) {
       err.textContent = "";
       const kind = b.dataset.src;
       if (kind === "none") SH.img = null;
-      else { const ok = await pickPhoto(kind, err); if (!ok) return; }
-      SH.src = kind; sh.querySelectorAll("[data-src]").forEach((x) => x.setAttribute("aria-pressed", x === b)); drawShare();
+      else {
+        const src = await getPhotoSrc(kind, err); if (!src) return;
+        try { SH.img = await ShareCard.loadImg(src); } catch { err.textContent = "Não foi possível abrir essa imagem."; return; }
+        if (kind !== "map") { const ph = await attachPhoto(SH.act, SH.img, kind); if (ph) { SH.src = "ph:" + ph.id; renderShSaved(sh); drawShare(); toast("Foto salva no treino"); return; } }
+      }
+      SH.src = kind; markShSrc(sh); drawShare();
     });
+    renderShSaved(sh);
     const r = $("#sh-route", sh); if (r) r.onchange = () => { SH.route = r.checked; drawShare(); };
     $("#sh-go", sh).onclick = () => doShare($("#sh-go", sh), err);
     $("#sh-text", sh).onclick = () => shareTextOnly(SH.act);
@@ -856,22 +890,99 @@ function mapSnapshot() {
     dMap.triggerRepaint();
   });
 }
-async function pickPhoto(kind, err) {
+async function getPhotoSrc(kind, err) {
   try {
     let src = null;
     if (kind === "map") src = await mapSnapshot();
     else if (NATIVE && kind === "gallery") { const r = await Camera.chooseFromGallery({ mediaType: 0, allowMultipleSelection: false, limit: 1, editable: "no", quality: 90 }); src = r?.results?.[0]?.webPath; }
-    else if (NATIVE) { const r = await Camera.takePhoto({ quality: 90, targetWidth: 1920, targetHeight: 1920, correctOrientation: true, cameraDirection: kind === "selfie" ? "FRONT" : "REAR", editable: "no", saveToGallery: false }); src = r?.webPath; }
+    else if (NATIVE) { const r = await Camera.takePhoto({ quality: 90, targetWidth: 2000, targetHeight: 2000, correctOrientation: true, cameraDirection: kind === "selfie" ? "FRONT" : "REAR", editable: "no", saveToGallery: false }); src = r?.webPath; }
     else src = await webPick(kind);
-    if (!src) return false;
-    SH.img = await ShareCard.loadImg(src);
-    return true;
+    return src || null;
   } catch (e) {
     const m = String(e?.message || e);
-    if (!/cancel/i.test(m)) err.textContent = kind === "map" ? "Não deu para capturar o mapa. Espere ele carregar e tente de novo." : "Não foi possível abrir a câmera ou a galeria. Confira a permissão de câmera do Fôlego.";
-    return false;
+    if (!/cancel/i.test(m) && err) err.textContent = kind === "map" ? "Não deu para capturar o mapa. Espere ele carregar e tente de novo." : "Não foi possível abrir a câmera ou a galeria. Confira a permissão de câmera do Fôlego.";
+    return null;
   }
 }
+
+/* ============ fotos do treino (guardadas no celular) ============ */
+const MAX_PHOTOS = 10;
+function photosHtml(a) {
+  const list = a.photos || [];
+  return list.map((ph) => `<button class="ph" data-do="ph-view" data-id="${ph.id}" aria-label="Abrir foto"><img src="${ph.thumb}" alt="Foto do treino"></button>`).join("")
+    + (list.length < MAX_PHOTOS ? `<button class="ph add" data-do="ph-add" aria-label="Adicionar foto"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>${list.length ? "Mais uma" : "Adicionar foto"}</span></button>` : "");
+}
+function refreshPhotos(a) {
+  const box = $("#d-photos"); if (box && current && current.id === a.id) box.innerHTML = photosHtml(a);
+  if (!$("#detail").hidden) return; render();
+}
+// Reduz a foto (até 1600 px), grava no celular e liga ao treino
+async function attachPhoto(a, img, kind) {
+  const local = S.mine.find((x) => x.id === a.id);
+  if (!local) return null;
+  if ((local.photos || []).length >= MAX_PHOTOS) { toast(`Cada treino guarda até ${MAX_PHOTOS} fotos.`); return null; }
+  const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas"); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+  const t = document.createElement("canvas"); t.width = t.height = 240; const tg = t.getContext("2d");
+  const s = Math.max(240 / img.width, 240 / img.height); tg.drawImage(img, (240 - img.width * s) / 2, (240 - img.height * s) / 2, img.width * s, img.height * s);
+  const ph = { id: uid(), thumb: t.toDataURL("image/jpeg", 0.72), kind, at: Date.now() };
+  try {
+    await idb.putPhoto({ id: ph.id, actId: a.id, blob, w: c.width, h: c.height, kind, at: ph.at });
+    local.photos = (local.photos || []).concat(ph);
+    if (a !== local) a.photos = local.photos;
+    await idb.put(local);
+  } catch { toast("Não foi possível salvar a foto. O celular pode estar sem espaço."); return null; }
+  refreshPhotos(local);
+  return ph;
+}
+const photoUrls = new Map();
+async function photoURL(id) {
+  if (photoUrls.has(id)) return photoUrls.get(id);
+  try { const p = await idb.getPhoto(id); if (!p) return null; const u = URL.createObjectURL(p.blob); photoUrls.set(id, u); return u; } catch { return null; }
+}
+async function deletePhoto(a, id) {
+  const local = S.mine.find((x) => x.id === a.id); if (!local) return;
+  try { await idb.delPhoto(id); } catch {}
+  local.photos = (local.photos || []).filter((p) => p.id !== id); if (a !== local) a.photos = local.photos;
+  await idb.put(local);
+  if (photoUrls.has(id)) { URL.revokeObjectURL(photoUrls.get(id)); photoUrls.delete(id); }
+  refreshPhotos(local); toast("Foto excluída");
+}
+function openAddPhoto(a) {
+  openSheet(`<h3>Adicionar foto</h3><p class="lead">A foto fica guardada junto com este treino, aqui no seu celular.</p>
+    <div class="add-ph">
+      <button class="btn2" type="button" data-k="camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Foto do local</button>
+      <button class="btn2" type="button" data-k="selfie"><svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Selfie</button>
+      <button class="btn2" type="button" data-k="gallery"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Da galeria</button>
+    </div><div class="err" id="ap-err"></div>
+    <button class="btn2 wide" type="button" id="ap-close">Cancelar</button>`, (sh) => {
+    $("#ap-close", sh).onclick = closeSheet;
+    sh.querySelectorAll("[data-k]").forEach((b) => b.onclick = async () => {
+      const src = await getPhotoSrc(b.dataset.k, $("#ap-err", sh)); if (!src) return;
+      let img; try { img = await ShareCard.loadImg(src); } catch { $("#ap-err", sh).textContent = "Não foi possível abrir essa imagem."; return; }
+      const ph = await attachPhoto(a, img, b.dataset.k); if (ph) { closeSheet(); toast("Foto salva no treino"); }
+    });
+  });
+}
+async function viewPhoto(a, id) {
+  const url = await photoURL(id); if (!url) { toast("Foto não encontrada neste celular."); return; }
+  const box = document.createElement("div"); box.className = "lightbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
+  box.innerHTML = `<img src="${url}" alt="Foto do treino"><button class="map-btn close" data-lb="close" aria-label="Fechar">×</button>
+    <div class="lb-bar"><button class="btn2" data-lb="share">Compartilhar com esta foto</button><button class="btn2" data-lb="del">Excluir foto</button></div>`;
+  document.body.appendChild(box);
+  const close = () => { box.remove(); lightboxClose = null; };
+  lightboxClose = close;
+  box.addEventListener("click", async (e) => {
+    const k = e.target.closest("[data-lb]")?.dataset.lb;
+    if (k === "close" || e.target === box) close();
+    else if (k === "share") { close(); openShare(a, false, id); }
+    else if (k === "del") { const b = e.target.closest("[data-lb]"); if (b.dataset.sure) { close(); deletePhoto(a, id); } else { b.dataset.sure = "1"; b.textContent = "Toque de novo para excluir"; } }
+  });
+}
+let lightboxClose = null;
+
 async function doShare(btn, err) {
   const cv = $("#sh-canvas"), a = SH.act; if (!cv || btn.disabled) return;
   btn.disabled = true; const lbl = btn.querySelector("span"); lbl.textContent = "Preparando…";
@@ -973,7 +1084,7 @@ function openProfile(first = false) {
     const sel = $("#pf-vname", sh);
     Coach.listVoices().then((vs) => {
       sel.innerHTML = `<option value="">Padrão do celular</option>` + vs.map((v) => `<option value="${esc(v.uri)}" ${v.uri === Coach.coach.voiceURI ? "selected" : ""}>${esc(v.label)}</option>`).join("");
-      if (!vs.length) sel.insertAdjacentHTML("afterend", '<p class="lead">Nenhuma voz em português encontrada. Instale em Configurações do Android → Idioma → Saída de texto para voz.</p>');
+      if (!vs.length) sel.insertAdjacentHTML("afterend", '<p class="lead">Nenhuma voz em português encontrada. ${IOS ? "Baixe vozes em Ajustes do iPhone → Acessibilidade → Conteúdo Falado → Vozes → Português." : "Instale em Configurações do Android → Idioma → Saída de texto para voz."}</p>');
     });
     sel.onchange = () => { Coach.coach.voiceURI = sel.value; saveC(); Coach.speak("Olá! Esta é a minha voz.", { force: true }); };
     $("#pf-test", sh).onclick = () => Coach.speak(Coach.cue({ type: "run", dist: 3000, moving: 16 * 60 + 30, split: 318, prevSplit: 331, bpm: Coach.hrFresh() ? Coach.hr.bpm : 152, kcal: 210 }), { force: true });
@@ -1037,7 +1148,7 @@ async function toggleDiag(btn) {
 }
 async function invite() {
   if (NATIVE) {
-    const dl = CFG.downloadUrl ? `\n1. Baixe e instale: ${CFG.downloadUrl}` : "\n1. Peça o arquivo do app para quem te convidou";
+    const dl = dlText() ? `\n1. Baixe e instale (${dlText()})` : "\n1. Peça o arquivo do app para quem te convidou";
     const msg = `Bora treinar comigo no Fôlego?${dl}\n2. Abra o app, escolha um apelido e use o código da turma: ${S.group}`;
     try { await ShareP.share({ title: "Fôlego", text: msg, dialogTitle: "Convidar para a turma" }); } catch {}
     return;
@@ -1076,6 +1187,7 @@ function openManual() {
 }
 
 async function delAct(a) {
+  for (const ph of a.photos || []) { try { await idb.delPhoto(ph.id); } catch {} }
   await idb.del(a.id); S.mine = S.mine.filter((x) => x.id !== a.id);
   if (S.sb && S.myId) { await S.sb.from("activities").delete().eq("id", a.id); if (S.remote) S.remote = S.remote.filter((x) => x.id !== a.id); }
   closeDetail(); toast("Treino excluído");
@@ -1107,6 +1219,8 @@ document.addEventListener("click", async (e) => {
   else if (d === "del-ask") { b.textContent = "Toque de novo para excluir"; b.dataset.do = "del-yes"; b.style.color = "var(--tartan)"; }
   else if (d === "del-yes" && current) delAct(current);
   else if (d === "diag-play" && current?.diag) toggleDiag(b);
+  else if (d === "ph-add" && current) openAddPhoto(current);
+  else if (d === "ph-view" && current) viewPhoto(current, id);
 });
 $("#me-btn").onclick = () => openProfile(false);
 $("#rec-close").onclick = closeRec;
@@ -1121,6 +1235,7 @@ window.addEventListener("online", () => { syncPending(); });
 /* ============ início ============ */
 if (NATIVE) {
   AppP.addListener("backButton", () => {
+    if (lightboxClose) return lightboxClose();
     if (!$("#sheet-bg").hidden) { if (S.nick) closeSheet(); return; }
     if (!$("#detail").hidden) return closeDetail();
     if (!$("#rec").hidden) return closeRec();

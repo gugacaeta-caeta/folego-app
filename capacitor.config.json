@@ -15,5 +15,9 @@
         "noDeviceFound": "Nenhum sensor encontrado. Confira se ele está ligado e transmitindo."
       }
     }
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#F1F0EA"
   }
 }

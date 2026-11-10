@@ -1,4 +1,4 @@
-# Fôlego para Android
+# Fôlego para Android e iPhone
 
 App nativo de corrida, caminhada e bike para você e seus amigos. Grava o GPS **com a tela bloqueada e o celular no bolso**, mostra a rota em **mapa 3D** com relevo e tem desafio do dia, ranking, aplausos e exportação GPX.
 
@@ -29,6 +29,15 @@ Esses celulares economizam bateria fechando apps em segundo plano. Para o treino
 - **Configurações → Apps → Fôlego → Bateria → Sem restrições** (ou "Não otimizar").
 - Na Xiaomi, também ative **Início automático** para o Fôlego.
 
+## iPhone
+
+O mesmo app também é compilado para iPhone a cada versão (arquivo `Folego-iOS.ipa` em Releases). A Apple só deixa instalar apps fora da App Store de duas formas:
+
+1. **TestFlight (recomendado para a turma):** precisa de uma conta Apple Developer (US$ 99/ano). Com ela, o app vai para o TestFlight e cada amigo instala pelo app TestFlight com um link, sem computador. As atualizações chegam sozinhas por 90 dias por versão.
+2. **Sem pagar, só para teste:** instalar o `Folego-iOS.ipa` pelo Sideloadly ou AltStore num computador, com o seu Apple ID. O app expira a cada 7 dias e precisa ser reinstalado.
+
+No iPhone, na primeira gravação, escolha **Permitir ao Usar o App** e depois **Mudar para Sempre Permitir** para gravar com a tela bloqueada.
+
 ## Treinador por voz, frequência cardíaca e diagnóstico
 
 - **Voz do treinador:** liga e desliga no botão de alto-falante da tela de gravação. Em Ajustes (toque no seu nome) você escolhe estilo (Animado, Tranquilo, Técnico ou Sargento), voz, velocidade, tom, intervalo dos avisos (500 m a 5 km) e o que ele fala.
@@ -39,6 +48,10 @@ Esses celulares economizam bateria fechando apps em segundo plano. Para o treino
 ## Compartilhar com foto
 
 Ao salvar um treino, o app oferece montar uma imagem para postar: tire uma foto do lugar, uma selfie, escolha da galeria, use o mapa 3D ou só o fundo de pista. São três modelos (Clássico, Número de peito, Mínimo) em formato Story 9:16 ou Post 4:5, com distância, tempo, ritmo, frequência ou calorias e a rota. O botão **Compartilhar imagem** abre o WhatsApp, Instagram, Facebook e outros apps do celular. Também dá para fazer depois, pelo botão **Compartilhar com foto** em qualquer treino.
+
+## Fotos do treino
+
+Toda foto tirada ou escolhida para um treino (foto do local, selfie ou da galeria) fica **guardada junto com o treino**, no próprio celular. Ela aparece na tela do treino em **Fotos do treino** (até 10 por treino) e em miniatura na lista. Toque numa foto para ver em tela cheia, compartilhar com ela ou excluir. As fotos não vão para a turma e são apagadas se o app for desinstalado.
 
 Se você já tinha ligado a turma no Supabase, rode o `supabase.sql` de novo para criar as colunas de frequência e calorias.
 
