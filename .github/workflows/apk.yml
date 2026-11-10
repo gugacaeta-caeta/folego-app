@@ -75,7 +75,7 @@ jobs:
 
   ios:
     needs: android
-    runs-on: macos-15
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v5
 
